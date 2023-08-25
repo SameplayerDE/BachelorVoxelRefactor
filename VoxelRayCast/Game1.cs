@@ -1,6 +1,7 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,12 +35,12 @@ namespace VoxelRayCast
         private const int _virtualResolutionY = 240;
 
         private RenderTarget2D _rayCastTarget;
-        private const int _rayCastTargetResolutionX = 1920 / 2;
-        private const int _rayCastTargetResolutionY = 1080 / 2;
+        private int _rayCastTargetResolutionX = 1920 / 10;
+        private int _rayCastTargetResolutionY = 1080 / 10;
 
-        private const int _mapX = 256;
-        private const int _mapY = 256;
-        private const int _mapZ = 256;
+        private int _mapX = 256;
+        private int _mapY = 256;
+        private int _mapZ = 256;
 
         private int[,,] _map;
         private int[] _map1D;
@@ -73,6 +74,7 @@ namespace VoxelRayCast
 
         private MouseState _prevMouseState;
         private MouseState _currMouseState;
+        private FastNoiseLite _noise;
 
         private bool _centerMouse = false;
 
@@ -85,6 +87,38 @@ namespace VoxelRayCast
             _graphics = new GraphicsDeviceManager(this);
             _graphics.IsFullScreen = false;
             _graphics.GraphicsProfile = GraphicsProfile.HiDef;
+            _noise = new FastNoiseLite();
+        }
+
+        public void SetSeed(int seed = 101199)
+        {
+            _noise.SetSeed(seed);
+            //noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
+        }
+
+        public void SetResolutionDownScaleBy(int a = 0)
+        {
+            a = Math.Clamp(a, 1, 100);
+            _rayCastTargetResolutionX = 1920 / a;
+            _rayCastTargetResolutionY = 1080 / a;
+        }
+
+        public void SetMapX(int a = 0)
+        {
+            a = Math.Clamp(a, 1, 4098);
+            _mapX = a;
+        }
+
+        public void SetMapY(int a = 0)
+        {
+            a = Math.Clamp(a, 1, 4098);
+            _mapY = a;
+        }
+
+        public void SetMapZ(int a = 0)
+        {
+            a = Math.Clamp(a, 1, 4098);
+            _mapZ = a;
         }
 
         protected override void Initialize()
@@ -122,7 +156,7 @@ namespace VoxelRayCast
             //_computeShader.Parameters["InputH"].SetValue(texture.Height);
 
             _pixel = new Texture2D(GraphicsDevice, 1, 1);
-            _pixel.SetData(new Color[] { Color.White });
+            _pixel.SetData(new Microsoft.Xna.Framework.Color[] { Microsoft.Xna.Framework.Color.White });
 
             _map = new int[_mapY, _mapZ, _mapX]; // y, z, x
             _rayResultBuffer = new StructuredBuffer(GraphicsDevice, typeof(RayResult3D), _maxCount, BufferUsage.None, ShaderAccess.ReadWrite);
@@ -131,9 +165,7 @@ namespace VoxelRayCast
             Random rand = new Random();
             _map1D = new int[_mapX * _mapZ * _mapY];
             // Create and configure FastNoise object
-            FastNoiseLite noise = new FastNoiseLite();
-            noise.SetSeed(101199);
-            noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
+
 
             //float scale = 1f;
             //
@@ -166,44 +198,71 @@ namespace VoxelRayCast
             //    }
             //}
 
-            float scale = 1f;
-
-            for (int y = 0; y < _mapY; y++)
+            AnsiConsole.Progress().Start(ctx =>
             {
-                for (int z = 0; z < _mapZ; z++)
+                var task1 = ctx.AddTask("[green]Map generation[/]");
+
+                float scale = 1f;
+                for (int y = 0; y < _mapY; y++)
                 {
-                    for (int x = 0; x < _mapX; x++)
+                    for (int z = 0; z < _mapZ; z++)
                     {
-
-                        //int id = _map[y, z, x];
-                        float nValue = Math.Max(noise.GetNoise(x * scale, y * scale, z * scale), 0);
-                        //nValue *= 30;
-                        //nValue += 10;
-                        //nValue = Math.Clamp(nValue, 0, _mapY);
-                        //
-                        if (nValue > 0f)
+                        for (int x = 0; x < _mapX; x++)
                         {
-                            //_map[y, z, x] = (int)Math.Abs(Math.Abs(x - 128)) + (int)Math.Abs(Math.Abs(z - 128));
-                            //_map[y, z, x] = y;
-                            _map[y, z, x] = rand.Next(1, 5);
+                            float nValue = Math.Max(_noise.GetNoise(x * scale, y * scale, z * scale), 0);
+                            if (nValue > 0f)
+                            {
+                                _map[y, z, x] = rand.Next(1, 5);
+                            }
+                            int id = _map[y, z, x];
+                            int index = x + _mapX * z + _mapX * _mapZ * y;
+                            _map1D[index] = id;
                         }
-                        int id = _map[y, z, x];
-                        int index = x + _mapX * z + _mapX * _mapZ * y;
-                        _map1D[index] = id;
-                        //for (int yx = 0; yx < nValue; yx++)
-                        //{
-                        //    int index = x + _mapX * z + _mapX * _mapZ * y;
-                        //    _map1D[index] = (int)nValue;
-                        //   _map[y, z, x] = (int)nValue;
-                        //}
 
-                        //int index = x + _mapX * z + _mapX * _mapZ * y;
-
-                        //id = (int)nValue;
-                        //_map1D[index] = id > 0 ? 1 : 0;
+                        // Hier aktualisierst du den Fortschrittsbalken
+                        task1.Increment(100f / (_mapY * _mapZ));
                     }
                 }
-            }
+            });
+
+            //float scale = 1f;
+            //
+            //for (int y = 0; y < _mapY; y++)
+            //{
+            //    for (int z = 0; z < _mapZ; z++)
+            //    {
+            //        for (int x = 0; x < _mapX; x++)
+            //        {
+            //
+            //            //int id = _map[y, z, x];
+            //            float nValue = Math.Max(_noise.GetNoise(x * scale, y * scale, z * scale), 0);
+            //            //nValue *= 30;
+            //            //nValue += 10;
+            //            //nValue = Math.Clamp(nValue, 0, _mapY);
+            //            //
+            //            if (nValue > 0f)
+            //            {
+            //                //_map[y, z, x] = (int)Math.Abs(Math.Abs(x - 128)) + (int)Math.Abs(Math.Abs(z - 128));
+            //                //_map[y, z, x] = y;
+            //                _map[y, z, x] = rand.Next(1, 5);
+            //            }
+            //            int id = _map[y, z, x];
+            //            int index = x + _mapX * z + _mapX * _mapZ * y;
+            //            _map1D[index] = id;
+            //            //for (int yx = 0; yx < nValue; yx++)
+            //            //{
+            //            //    int index = x + _mapX * z + _mapX * _mapZ * y;
+            //            //    _map1D[index] = (int)nValue;
+            //            //   _map[y, z, x] = (int)nValue;
+            //            //}
+            //
+            //            //int index = x + _mapX * z + _mapX * _mapZ * y;
+            //
+            //            //id = (int)nValue;
+            //            //_map1D[index] = id > 0 ? 1 : 0;
+            //        }
+            //    }
+            //}
 
 
             //Color[] atlas = new Color[16 * 16 * 7];
@@ -533,10 +592,10 @@ namespace VoxelRayCast
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.SetRenderTarget(_rayCastTarget);
-            GraphicsDevice.Clear(Color.Black);
+            GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
 
             _spriteBatch.Begin(depthStencilState: DepthStencilState.Default, samplerState: SamplerState.PointWrap);
-            _spriteBatch.Draw(_computeTexture, Vector2.Zero, Color.White);
+            _spriteBatch.Draw(_computeTexture, Vector2.Zero, Microsoft.Xna.Framework.Color.White);
             _spriteBatch.End();
 
             //GraphicsDevice.SetRenderTarget(_rayCastTarget);
@@ -563,13 +622,13 @@ namespace VoxelRayCast
             //}
 
             GraphicsDevice.SetRenderTarget(null);
-            GraphicsDevice.Clear(Color.White);
+            GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.White);
 
             _spriteBatch.Begin(depthStencilState: DepthStencilState.Default, samplerState: SamplerState.PointWrap);
 
             //_spriteBatch.Draw(_virtualScreen, GraphicsDevice.Viewport.Bounds, Color.White);
             //_spriteBatch.Draw(_rayCastTarget, new Rectangle(0, 0, 256, 256), Color.White);
-            _spriteBatch.Draw(_rayCastTarget, GraphicsDevice.Viewport.Bounds, Color.White);
+            _spriteBatch.Draw(_rayCastTarget, GraphicsDevice.Viewport.Bounds, Microsoft.Xna.Framework.Color.White);
             //_spriteBatch.Draw(_textures[_selection - 1], new Rectangle(0, 0, 64, 64), Color.White);
 
             //_spriteBatch.DrawString(_font, _selection + "", Vector2.Zero, Color.White);
@@ -680,8 +739,8 @@ namespace VoxelRayCast
                 pass.Apply();
                 GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, new VertexPositionColor[]
                 {
-                    new VertexPositionColor(from, Color.CornflowerBlue),
-                    new VertexPositionColor(to, Color.Black)
+                    new VertexPositionColor(from, Microsoft.Xna.Framework.Color.CornflowerBlue),
+                    new VertexPositionColor(to, Microsoft.Xna.Framework.Color.Black)
                 }, 0, 1);
             }
         }
