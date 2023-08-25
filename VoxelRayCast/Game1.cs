@@ -95,14 +95,14 @@ namespace VoxelRayCast
 
             _graphics.ApplyChanges();
 
-            _textures = new Texture2D[7];
-            _textures[0] = Content.Load<Texture2D>("dirt");
-            _textures[1] = Content.Load<Texture2D>("oak_log");
-            _textures[2] = Content.Load<Texture2D>("oak_planks");
-            _textures[3] = Content.Load<Texture2D>("iron_block");
-            _textures[4] = Content.Load<Texture2D>("gold_block");
-            _textures[5] = Content.Load<Texture2D>("oak_log_top");
-            _textures[6] = Content.Load<Texture2D>("cobblestone");
+            //_textures = new Texture2D[7];
+            //_textures[0] = Content.Load<Texture2D>("dirt");
+            //_textures[1] = Content.Load<Texture2D>("oak_log");
+            //_textures[2] = Content.Load<Texture2D>("oak_planks");
+            //_textures[3] = Content.Load<Texture2D>("iron_block");
+            //_textures[4] = Content.Load<Texture2D>("gold_block");
+            //_textures[5] = Content.Load<Texture2D>("oak_log_top");
+            //_textures[6] = Content.Load<Texture2D>("cobblestone");
 
             _computeTexture = new Texture2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
             _textureAtlas = new Texture3D(GraphicsDevice, 16, 16, 7, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
@@ -111,15 +111,15 @@ namespace VoxelRayCast
             _rayCastTarget = new RenderTarget2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, GraphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.Depth24);
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
-            _font = Content.Load<SpriteFont>("Font");
-            _effect = Content.Load<Effect>("vpc");
+            //_font = Content.Load<SpriteFont>("Font");
+            //_effect = Content.Load<Effect>("vpc");
 
             _computeShader = Content.Load<Effect>("Ray3D");
-            var texture = Content.Load<Texture2D>("dirt");
+            //var texture = Content.Load<Texture2D>("dirt");
 
             //_computeShader.Parameters["Input"].SetValue(texture);
-            _computeShader.Parameters["InputW"].SetValue(texture.Width);
-            _computeShader.Parameters["InputH"].SetValue(texture.Height);
+            //_computeShader.Parameters["InputW"].SetValue(texture.Width);
+            //_computeShader.Parameters["InputH"].SetValue(texture.Height);
 
             _pixel = new Texture2D(GraphicsDevice, 1, 1);
             _pixel.SetData(new Color[] { Color.White });
@@ -206,33 +206,33 @@ namespace VoxelRayCast
             }
 
 
-            Color[] atlas = new Color[16 * 16 * 7];
-            for (int i = 0; i < 7; i++)
-            {
-                Color[] copy = new Color[16 * 16];
-                _textures[i].GetData(copy);
-                for (int y = 0; y < 16; y++)
-                {
-                    for (int x = 0; x < 16; x++)
-                    {
-                        int index3D = x + 16 * y + 16 * 16 * i;
-                        int index2D = x + 16 * y;
-                        atlas[index3D] = copy[index2D];
-                    }
-                }
-            }
+            //Color[] atlas = new Color[16 * 16 * 7];
+            //for (int i = 0; i < 7; i++)
+            //{
+            //    Color[] copy = new Color[16 * 16];
+            //    _textures[i].GetData(copy);
+            //    for (int y = 0; y < 16; y++)
+            //    {
+            //        for (int x = 0; x < 16; x++)
+            //        {
+            //            int index3D = x + 16 * y + 16 * 16 * i;
+            //            int index2D = x + 16 * y;
+            //            atlas[index3D] = copy[index2D];
+            //        }
+            //    }
+            //}
 
             _computeShader.Parameters["MapMaxX"].SetValue(_mapX);
             _computeShader.Parameters["MapMaxY"].SetValue(_mapY);
             _computeShader.Parameters["MapMaxZ"].SetValue(_mapZ);
 
-            _textureAtlas.SetData(atlas);
+            //_textureAtlas.SetData(atlas);
             _shaderMap.SetData(_map1D);
 
             //_computeShader.Parameters["Input"].SetValue(_textureAtlas);
 
-            _computeShader.Parameters["InputW"].SetValue(_textureAtlas.Width);
-            _computeShader.Parameters["InputH"].SetValue(_textureAtlas.Height);
+            //_computeShader.Parameters["InputW"].SetValue(_textureAtlas.Width);
+            //_computeShader.Parameters["InputH"].SetValue(_textureAtlas.Height);
 
             base.Initialize();
         }
