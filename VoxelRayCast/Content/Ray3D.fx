@@ -16,8 +16,8 @@ struct RayResult3D
 };
 
 float3 FogColor = float3(0, 0, 0);
-float FogStart = 25;
-float FogEnd = 100;
+float FogStart = 256;
+float FogEnd = 512;
 
 float3 AmbientLightColor = float3(0.4, 0.4, 0.4);
 float3 LightColor = float3(1, 0.9f, 1);
@@ -238,103 +238,6 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
     }
 
     float3 mapPosition = float3(mapX, mapY, mapZ);
-
-    //float fovHalf = radians(FOV / 2);
-    //float step = radians(FOV) / Width;
-    //
-    //ry = -fovHalf + Rotation.y + step * globalID.x;
-
-    /*if (ry >= radians(FOV)) {
-        rx += radians(45) / Height;
-    }*/
-
-
-
-
-
-
-
-
-    //var rayDir = Vector3.Transform(Vector3.Backward, n_rotation);
-
-    //float3 deltaDist = float3(rayDir.length) / rayDir;
-    //deltaDist = new Vector3(Math.Abs(deltaDist.X), Math.Abs(deltaDist.Y), Math.Abs(deltaDist.Z));
-
-    /*float2 pos = float2(X, Y);
-    float2 res = float2(Width, Height);
-    float2 screenPos = (pos.xy / res.xy) * 2.0f - 1.0f;
-    float3 cameraDir = float3(0, 0, 1);
-    float3 cameraPlaneU = float3(1.0, 0.0, 0.0);
-    float3 cameraPlaneV = float3(0.0, 1.0, 0.0) * Height / Width;
-    float3 rayDir = cameraDir + screenPos.x * cameraPlaneU + screenPos.y * cameraPlaneV;*/
-
-    //float fovHalfX = radians(45 / 2);
-    //float fovHalfY = radians(10 / 2);
-    //float stepValueX = radians(45) / Width;
-    //float stepValueY = radians(10) / Height;
-    ////
-    //float rotationY = -fovHalfX + Rotation.y + stepValueX * (x);
-    //float rotationX = -fovHalfY + Rotation.x + stepValueY * (y);
-    ////
-    //float rayDirX = sin(rotationY);
-    //float rayDirY = sin(rotationX);
-    //float rayDirZ = cos(rotationY);
-
-     //float3 cameraDir = Rotation;
-     //float3 cameraPlaneU = float3(0.0f, 0.0f, 1.0f);
-     //float3 cameraPlaneV = float3(1.0f, 0.0f, 0.0f) * Width / Height;
-     //float3 rayDir = cameraDir + x * cameraPlaneU + y * cameraPlaneV;
-     //
-     ////float3 rayDir = float3(rayDirX, rayDirY, rayDirZ);
-     ////float3 rayDir = float3(0, 0, 1);
-     ////rayDir.xz = rotate2d(rayDir.xz, rotationY);
-     //
-     //float t = radians(90);
-     //float3 rayDir = Rotation;
-
-     //rayDir
-     //rayDir.x =  cos(t) * rayDir.x + 0 * rayDir.y + sin(t) * rayDir.z;
-     //rayDir.y =       0 * rayDir.x + 1 * rayDir.y +      0 * rayDir.z;
-     //rayDir.z = -sin(t) * rayDir.x + 0 * rayDir.y + cos(t) * rayDir.z;
-     //rayDir *= ;
-     //rayDir.x += x / Width;
-     //rayDir.z -= x / Width;
-
-
-
-     //float rayDirLength = length(rayDir);
-     //
-     //float3 deltaDist = float3(rayDirLength, rayDirLength, rayDirLength) / rayDir;
-     //deltaDist = float3(abs(deltaDist.x), abs(deltaDist.y), abs(deltaDist.z));
-     //
-     //float deltaDistX = deltaDist.x;
-     //float deltaDistY = deltaDist.y;
-     //float deltaDistZ = deltaDist.z;
-     //
-     //float3 raySign = float3(sign(rayDir.x), sign(rayDir.y), sign(rayDir.z));
-     //float3 sideDist = (raySign * (mapPosition - Position) + (raySign * 0.5f) + float3(0.5f, 0.5f, 0.5f)) * deltaDist;
-     //float3 step = raySign;
-     //
-     //float sideDistX = sideDist.x;
-     //float sideDistY = sideDist.y;
-     //float sideDistZ = sideDist.z;
-     //
-     //int stepX = (int)step.x;
-     //int stepY = (int)step.y;
-     //int stepZ = (int)step.z;
-     //
-     //step = float3(stepX, stepY, stepZ);
-
-     //var n_rotation =
-     //    Matrix.CreateRotationX(_rotation.X) *
-     //    Matrix.CreateRotationY(_rotation.Y) *
-     //    Matrix.CreateRotationZ(_rotation.Z);
-
-     //float t = radians(iTime * 10);
-     //float3x3 n_rotation = rotY(t);
-     //float3x3 n_rot = AngleAxis3x3(rx, float3(0, 0, 1)) * AngleAxis3x3(ry, float3(0, 0, 1)) * AngleAxis3x3(rz, float3(0, 0, 1));
-
-
     int stepSize = 1;
 
     float3 rayPosition = Position;
@@ -345,16 +248,10 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
     float3 rayDir = cameraDir + screenPos.x * cameraPlaneU + screenPos.y * cameraPlaneV;
 
     rayDir = mul(rayDir, RotationMatrix);
-
-    //rayPosition.xz = rotate2d(rayPosition.xz, iTime);
-    //rayDir.xz = rotate2d(rayDir.xz, -Rotation.y);
-    //rayDir.yz = rotate2d(rayDir.yz, Rotation.x);
-
     float rayDirLength = length(rayDir);
 
     float3 deltaDist = float3(rayDirLength, rayDirLength, rayDirLength) / rayDir;
     deltaDist = float3(abs(deltaDist.x), abs(deltaDist.y), abs(deltaDist.z));
-
 
     float deltaDistX = deltaDist.x;
     float deltaDistY = deltaDist.y;
@@ -422,12 +319,7 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
 
         if (getSolid(mapX, mapY, mapZ) != 0)
         {
-            //if (getSolid(mapX, mapY, mapZ) != 1) {
-            //    id = getSolid(mapX, mapY, mapZ);
             hit = 1;
-            //}
-            
-            //id++;
             id = getSolid(mapX, mapY, mapZ);
         }
         distance++;
@@ -462,24 +354,6 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
     Results[globalID.x] = result;
 
     float4 c = float4(0, 0, 0, 0);
-    switch (result.Id)
-    {
-        case 1: c = float4(1, 0, 0, 1); break; //red
-        case 2: c = float4(0, 1, 0, 1); break; //green
-        case 3: c = float4(0, 0, 1, 1); break; //blue
-        case 4: c = float4(1, 1, 1, 1); break; //white
-        default: c = float4(1, 1, 1, 1); break; //yellow
-    }
-    //c = saturate(rayLength) * c;
-    //c = (result.Id / 64.0f);
-    //c /= saturate((result.Id / 64.0f));
-    //c *= 1 - (rayLength / 64.0f);
-    //while (id > 0) {
-    //    c += float4(0.01f, 0.01f, 0.01f, 1);
-    //    id--;
-    //}
-    //c = float4(1, 1, 1, 1);
-    //c = c / float4(1 - (rayLength / 128.0f), 1 - (rayLength / 128.0f), 1 - (rayLength / 128.0f), 1);
     int tX = 0;
     int tY = 0;
 
@@ -503,59 +377,55 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
         tY = (InputH * yRatio);
     }
 
-
     uint2 idL = uint2(x, Height - y);
 
     if (result.Hit == 1 || result.Id != 0)
     {
-        //c = Input[uint3(tX, tY, result.Id - 1)];
-        //c = Input[uint3(tX, tY, result.Id - 1)];
-
-       //float3 normal;
-       //
-       //if (result.Side == 0) {
-       //    if (result.SideOrientation == 0) {
-       //        normal = float3(1, 0, 0);
-       //    }
-       //    if (result.SideOrientation == 1) {
-       //        normal = float3(-1, 0, 0);
-       //    }
-       //}
-       //if (result.Side == 1) {
-       //    if (result.SideOrientation == 0) {
-       //        normal = float3(0, 1, 0);
-       //    }
-       //    if (result.SideOrientation == 1) {
-       //        normal = float3(0, -1, 0);
-       //    }
-       //}
-       //if (result.Side == 2) {
-       //    if (result.SideOrientation == 0) {
-       //        normal = float3(0, 0, 1);
-       //    }
-       //    if (result.SideOrientation == 1) {
-       //        normal = float3(0, 0, -1);
-       //    }
-       //}
+        c = Input[uint3(tX, tY, result.Id - 1)];
+       	float3 normal = float3(0, 1, 0);
+       
+       	if (result.Side == 0) {
+       	    if (result.SideOrientation == 0) {
+       	        normal = float3(1, 0, 0);
+       	    }
+       	    if (result.SideOrientation == 1) {
+       	        normal = float3(-1, 0, 0);
+       	    }
+       	}
+       	if (result.Side == 1) {
+       	    if (result.SideOrientation == 0) {
+       	        normal = float3(0, 1, 0);
+       	    }
+       	    if (result.SideOrientation == 1) {
+       	        normal = float3(0, -1, 0);
+       	    }
+       	}
+       	if (result.Side == 2) {
+       	    if (result.SideOrientation == 0) {
+       	        normal = float3(0, 0, 1);
+       	    }
+       	    if (result.SideOrientation == 1) {
+       	        normal = float3(0, 0, -1);
+       	    }
+       	}
 
 
-        //float3 totalLight = float3(0, 0, 0);
-        //totalLight += AmbientLightColor;
+        float3 totalLight = float3(0, 0, 0);
+        totalLight += AmbientLightColor;
         //
-        //float3 lightDir = normalize(LightPosition - result.To);
-        //float diffuse = saturate(dot(lightDir, normal));
+        float3 lightDir = normalize(LightPosition - result.To);
+        float diffuse = saturate(dot(lightDir, normal));
         //
-        //if (isBlocked(result.To, LightPosition) == 1) {
-        //    diffuse = saturate(dot(-normal, normal));
-        //}
+       	if (isBlocked(result.To, LightPosition) == 1) {
+            diffuse = 0;
+        }
         //
-        //totalLight += diffuse * LightColor;
+        totalLight += diffuse * LightColor;
         //
-        //float3 output = saturate(totalLight) * c;
-        //float fog = clamp((result.Length - FogStart) / (FogEnd - FogStart), 0, 1);
-        Output[idL] = c;
-
-
+        float3 output = saturate(totalLight) * c;
+        float fog = clamp((result.Length - FogStart) / (FogEnd - FogStart), 0, 1);
+        float3 finalColor = lerp(output, float3(0, 0, 0), fog);
+        Output[idL] = float4(finalColor, 1);
     }
     else
     {

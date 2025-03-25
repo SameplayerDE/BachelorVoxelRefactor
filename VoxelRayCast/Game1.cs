@@ -5,6 +5,7 @@ using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Color = Microsoft.Xna.Framework.Color;
 
 namespace VoxelRayCast
 {
@@ -14,7 +15,7 @@ namespace VoxelRayCast
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
 
-        private Texture2D _pixel;
+        //private Texture2D _pixel;
         private Texture2D _computeTexture;
         private Texture3D _textureAtlas;
 
@@ -28,7 +29,7 @@ namespace VoxelRayCast
         private StructuredBuffer _rayResultBuffer;
         private StructuredBuffer _shaderMap;
         private StructuredBuffer _shaderMapC;
-        private int _maxCount = 1_000_000;
+        private int _maxCount = 1_000_000_000;
 
         private RenderTarget2D _virtualScreen;
         private const int _virtualResolutionX = 240;
@@ -93,7 +94,7 @@ namespace VoxelRayCast
         public void SetSeed(int seed = 101199)
         {
             _noise.SetSeed(seed);
-            //noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
+            _noise.SetNoiseType(FastNoiseLite.NoiseType.OpenSimplex2S);
         }
 
         public void SetResolutionDownScaleBy(int a = 0)
@@ -129,14 +130,14 @@ namespace VoxelRayCast
 
             _graphics.ApplyChanges();
 
-            //_textures = new Texture2D[7];
-            //_textures[0] = Content.Load<Texture2D>("dirt");
-            //_textures[1] = Content.Load<Texture2D>("oak_log");
-            //_textures[2] = Content.Load<Texture2D>("oak_planks");
-            //_textures[3] = Content.Load<Texture2D>("iron_block");
-            //_textures[4] = Content.Load<Texture2D>("gold_block");
-            //_textures[5] = Content.Load<Texture2D>("oak_log_top");
-            //_textures[6] = Content.Load<Texture2D>("cobblestone");
+            _textures = new Texture2D[7];
+            _textures[0] = Content.Load<Texture2D>("dirt");
+            _textures[1] = Content.Load<Texture2D>("oak_log");
+            _textures[2] = Content.Load<Texture2D>("oak_planks");
+            _textures[3] = Content.Load<Texture2D>("iron_block");
+            _textures[4] = Content.Load<Texture2D>("gold_block");
+            _textures[5] = Content.Load<Texture2D>("oak_log_top");
+            _textures[6] = Content.Load<Texture2D>("cobblestone");
 
             _computeTexture = new Texture2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
             _textureAtlas = new Texture3D(GraphicsDevice, 16, 16, 7, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
@@ -146,6 +147,7 @@ namespace VoxelRayCast
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
             //_font = Content.Load<SpriteFont>("Font");
+            
             //_effect = Content.Load<Effect>("vpc");
 
             _computeShader = Content.Load<Effect>("Ray3D");
@@ -155,8 +157,8 @@ namespace VoxelRayCast
             //_computeShader.Parameters["InputW"].SetValue(texture.Width);
             //_computeShader.Parameters["InputH"].SetValue(texture.Height);
 
-            _pixel = new Texture2D(GraphicsDevice, 1, 1);
-            _pixel.SetData(new Microsoft.Xna.Framework.Color[] { Microsoft.Xna.Framework.Color.White });
+            //_pixel = new Texture2D(GraphicsDevice, 1, 1);
+            //_pixel.SetData(new Microsoft.Xna.Framework.Color[] { Microsoft.Xna.Framework.Color.White });
 
             _map = new int[_mapY, _mapZ, _mapX]; // y, z, x
             _rayResultBuffer = new StructuredBuffer(GraphicsDevice, typeof(RayResult3D), _maxCount, BufferUsage.None, ShaderAccess.ReadWrite);
@@ -210,7 +212,7 @@ namespace VoxelRayCast
                         for (int x = 0; x < _mapX; x++)
                         {
                             float nValue = Math.Max(_noise.GetNoise(x * scale, y * scale, z * scale), 0);
-                            if (nValue > 0f)
+                            if (nValue > 0.5f)
                             {
                                 _map[y, z, x] = rand.Next(1, 5);
                             }
@@ -265,33 +267,32 @@ namespace VoxelRayCast
             //}
 
 
-            //Color[] atlas = new Color[16 * 16 * 7];
-            //for (int i = 0; i < 7; i++)
-            //{
-            //    Color[] copy = new Color[16 * 16];
-            //    _textures[i].GetData(copy);
-            //    for (int y = 0; y < 16; y++)
-            //    {
-            //        for (int x = 0; x < 16; x++)
-            //        {
-            //            int index3D = x + 16 * y + 16 * 16 * i;
-            //            int index2D = x + 16 * y;
-            //            atlas[index3D] = copy[index2D];
-            //        }
-            //    }
-            //}
+            Color[] atlas = new Color[16 * 16 * 7];
+            for (int i = 0; i < 7; i++)
+            {
+                Color[] copy = new Color[16 * 16];
+                _textures[i].GetData(copy);
+                for (int y = 0; y < 16; y++)
+                {
+                    for (int x = 0; x < 16; x++)
+                    {
+                        int index3D = x + 16 * y + 16 * 16 * i;
+                        int index2D = x + 16 * y;
+                        atlas[index3D] = copy[index2D];
+                    }
+                }
+            }
 
             _computeShader.Parameters["MapMaxX"].SetValue(_mapX);
             _computeShader.Parameters["MapMaxY"].SetValue(_mapY);
             _computeShader.Parameters["MapMaxZ"].SetValue(_mapZ);
 
-            //_textureAtlas.SetData(atlas);
+            _textureAtlas.SetData(atlas);
             _shaderMap.SetData(_map1D);
 
-            //_computeShader.Parameters["Input"].SetValue(_textureAtlas);
-
-            //_computeShader.Parameters["InputW"].SetValue(_textureAtlas.Width);
-            //_computeShader.Parameters["InputH"].SetValue(_textureAtlas.Height);
+            _computeShader.Parameters["Input"].SetValue(_textureAtlas);
+            _computeShader.Parameters["InputW"].SetValue(_textureAtlas.Width);
+            _computeShader.Parameters["InputH"].SetValue(_textureAtlas.Height);
 
             base.Initialize();
         }
@@ -638,11 +639,14 @@ namespace VoxelRayCast
 
             if (Keyboard.GetState().IsKeyDown(Keys.Space))
             {
-                Stream stream = File.Create("image_" + DateTime.Now.ToString("yyyy-dd-M--HH-mm-ss") + ".png");
-                _rayCastTarget.SaveAsPng(stream, _rayCastTarget.Width, _rayCastTarget.Height);
-                stream.Dispose();
-                _rayCastTarget.Dispose();
-                Exit();
+                
+                _computeShader.Parameters["LightPosition"].SetValue(_position);
+                
+               //Stream stream = File.Create("image_" + DateTime.Now.ToString("yyyy-dd-M--HH-mm-ss") + ".png");
+               //_rayCastTarget.SaveAsPng(stream, _rayCastTarget.Width, _rayCastTarget.Height);
+               //stream.Dispose();
+               //_rayCastTarget.Dispose();
+               //Exit();
             }
             base.Draw(gameTime);
         }
