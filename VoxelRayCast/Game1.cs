@@ -1,26 +1,26 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
-using Spectre.Console;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using Color = Microsoft.Xna.Framework.Color;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace VoxelRayCast
 {
     public class Game1 : Game
     {
-
+        private Task _chunkLoaderTask;
+        private CancellationTokenSource _chunkLoaderCts = new CancellationTokenSource();
+        private object _mapLock = new object();
+        private const int _viewDistance = 1;
+        private const int _dynamicMapSize = Chunk.Size * (2 * _viewDistance + 1);
+        
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
-
-        //private Texture2D _pixel;
+        
         private Texture2D _computeTexture;
         private Texture3D _textureAtlas;
-
-        private SpriteFont _font;
-        private Effect _effect;
 
         private List<RayResult3D> _results = new List<RayResult3D>();
 
@@ -28,7 +28,6 @@ namespace VoxelRayCast
         const int ComputeGroupSize = 64;
         private StructuredBuffer _rayResultBuffer;
         private StructuredBuffer _shaderMap;
-        private StructuredBuffer _shaderMapC;
         private int _maxCount = 1_000_000_000;
 
         private RenderTarget2D _virtualScreen;
@@ -43,9 +42,7 @@ namespace VoxelRayCast
         private int _mapY = 256;
         private int _mapZ = 256;
 
-        private int[,,] _map;
         private int[] _map1D;
-        private float[] _map1DC;
 
         private Matrix _world;
         private Matrix _view;
@@ -54,9 +51,7 @@ namespace VoxelRayCast
         private int _selection = 1;
 
         private Texture2D[] _textures;
-
-        //Player
-        //private Vector3 _position = new Vector3(-50, 250, -50);
+        
         private Vector3 _position = new Vector3(-32, 128, -32);
         private Vector3 _rayPosition = new Vector3(0, 0f, 0);
         private Vector3 _rotation = new Vector3(MathHelper.ToRadians(15), MathHelper.ToRadians(45), 0);
@@ -89,6 +84,7 @@ namespace VoxelRayCast
             _graphics.IsFullScreen = false;
             _graphics.GraphicsProfile = GraphicsProfile.HiDef;
             _noise = new FastNoiseLite();
+            WorldGenerator.NoiseGenerator = _noise;
         }
 
         public void SetSeed(int seed = 101199)
@@ -122,12 +118,85 @@ namespace VoxelRayCast
             _mapZ = a;
         }
 
+        private void WriteChunkToMap1D(Chunk chunk, int chunkOffsetX, int chunkOffsetY, int chunkOffsetZ)
+        {
+            for (int y = 0; y < Chunk.Size; y++)
+            {
+                for (int z = 0; z < Chunk.Size; z++)
+                {
+                    for (int x = 0; x < Chunk.Size; x++)
+                    {
+                        int worldX = chunkOffsetX + x;
+                        int worldY = chunkOffsetY + y;
+                        int worldZ = chunkOffsetZ + z;
+
+                        if (worldX < 0 || worldY < 0 || worldZ < 0 ||
+                            worldX >= _dynamicMapSize || worldY >= _dynamicMapSize || worldZ >= _dynamicMapSize)
+                            continue;
+
+                        int mapIndex = worldX + Chunk.Size * (worldZ + Chunk.Size * worldY);
+                        int chunkIndex = x + Chunk.Size * (z + Chunk.Size * y);
+
+                        _map1D[mapIndex] = chunk.Data[chunkIndex];
+                    }
+                }
+            }
+        }
+        
+        private async Task LoadChunksAsync(Vector3 playerPosition, CancellationToken token)
+        {
+            var playerChunk = new Vector3(
+                (int)Math.Floor(_position.X / Chunk.Size),
+                (int)Math.Floor(_position.Y / Chunk.Size),
+                (int)Math.Floor(_position.Z / Chunk.Size)
+            );
+            
+            try
+            {
+                int[] newMapData = new int[_dynamicMapSize * _dynamicMapSize * _dynamicMapSize];
+
+                for (int dx = -_viewDistance; dx <= _viewDistance; dx++)
+                {
+                    for (int dy = -_viewDistance; dy <= _viewDistance; dy++)
+                    {
+                        for (int dz = -_viewDistance; dz <= _viewDistance; dz++)
+                        {
+                            if (token.IsCancellationRequested)
+                            {
+                                return;
+                            }
+                            int chunkX = (int)playerChunk.X + dx;
+                            int chunkY = (int)playerChunk.Y + dy;
+                            int chunkZ = (int)playerChunk.Z + dz;
+
+                            var chunk = WorldGenerator.GetChunk(chunkX, chunkY, chunkZ);
+                            
+                        }
+                    }
+                }
+
+                lock (_mapLock)
+                {
+                    Array.Copy(newMapData, _map1D, newMapData.Length);
+                    _shaderMap.SetData(_map1D);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ChunkLoad Error: {ex.Message}");
+            }
+        }
+        
         protected override void Initialize()
         {
+            _map1D = new int[Chunk.Size * Chunk.Size * Chunk.Size];
             IsFixedTimeStep = false;
             _graphics.SynchronizeWithVerticalRetrace = false;
             TargetElapsedTime = TimeSpan.FromMilliseconds(16);
 
+            var chunk = WorldGenerator.GetChunk(0, 0, 0);
+            WriteChunkToMap1D(chunk, 0, 0, 0);
+            
             _graphics.ApplyChanges();
 
             _textures = new Texture2D[7];
@@ -146,138 +215,23 @@ namespace VoxelRayCast
             _rayCastTarget = new RenderTarget2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, GraphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.Depth24);
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
-            //_font = Content.Load<SpriteFont>("Font");
-            
-            //_effect = Content.Load<Effect>("vpc");
-
+ 
             _computeShader = Content.Load<Effect>("Ray3D");
-            //var texture = Content.Load<Texture2D>("dirt");
-
-            //_computeShader.Parameters["Input"].SetValue(texture);
-            //_computeShader.Parameters["InputW"].SetValue(texture.Width);
-            //_computeShader.Parameters["InputH"].SetValue(texture.Height);
-
-            //_pixel = new Texture2D(GraphicsDevice, 1, 1);
-            //_pixel.SetData(new Microsoft.Xna.Framework.Color[] { Microsoft.Xna.Framework.Color.White });
-
-            _map = new int[_mapY, _mapZ, _mapX]; // y, z, x
+            
             _rayResultBuffer = new StructuredBuffer(GraphicsDevice, typeof(RayResult3D), _maxCount, BufferUsage.None, ShaderAccess.ReadWrite);
-            _shaderMap = new StructuredBuffer(GraphicsDevice, typeof(int), _mapX * _mapY * _mapZ, BufferUsage.None, ShaderAccess.ReadWrite);
-
-            Random rand = new Random();
-            _map1D = new int[_mapX * _mapZ * _mapY];
-            // Create and configure FastNoise object
-
-
-            //float scale = 1f;
-            //
-            //for (int y = 0; y < _mapY; y++)
-            //{
-            //    for (int z = 0; z < _mapZ; z++)
-            //    {
-            //        for (int x = 0; x < _mapX; x++)
-            //        {
-            //
-            //            //int id = _map[y, z, x];
-            //            float nValue = noise.GetNoise(x * scale, z * scale) + 1;
-            //            //nValue *= 30;
-            //            //nValue += 10;
-            //            //nValue = Math.Clamp(nValue, 0, _mapY);
-            //            //
-            //            //for (int y = 0; y < nValue; y++)
-            //            //{
-            //            //    int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            //    _map1D[index] = (int)nValue;
-            //            //    _map[y, z, x] = (int)nValue;
-            //            //}
-            //            int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            _map1D[index] = id;
-            //            //int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            //id = _map[y, z, x];
-            //            //id = (int)nValue;
-            //            //_map1D[index] = id > 0 ? 1 : 0;
-            //        }
-            //    }
-            //}
-
-            AnsiConsole.Progress().Start(ctx =>
+            _shaderMap = new StructuredBuffer(GraphicsDevice, typeof(int), Chunk.Size * Chunk.Size * Chunk.Size, BufferUsage.None, ShaderAccess.ReadWrite);
+            
+            var atlas = new Color[16 * 16 * _textures.Length];
+            for (var i = 0; i < _textures.Length; i++)
             {
-                var task1 = ctx.AddTask("[green]Map generation[/]");
-
-                float scale = 1f;
-                for (int y = 0; y < _mapY; y++)
-                {
-                    for (int z = 0; z < _mapZ; z++)
-                    {
-                        for (int x = 0; x < _mapX; x++)
-                        {
-                            float nValue = Math.Max(_noise.GetNoise(x * scale, y * scale, z * scale), 0);
-                            if (nValue > 0.5f)
-                            {
-                                _map[y, z, x] = rand.Next(1, 5);
-                            }
-                            int id = _map[y, z, x];
-                            int index = x + _mapX * z + _mapX * _mapZ * y;
-                            _map1D[index] = id;
-                        }
-
-                        // Hier aktualisierst du den Fortschrittsbalken
-                        task1.Increment(100f / (_mapY * _mapZ));
-                    }
-                }
-            });
-
-            //float scale = 1f;
-            //
-            //for (int y = 0; y < _mapY; y++)
-            //{
-            //    for (int z = 0; z < _mapZ; z++)
-            //    {
-            //        for (int x = 0; x < _mapX; x++)
-            //        {
-            //
-            //            //int id = _map[y, z, x];
-            //            float nValue = Math.Max(_noise.GetNoise(x * scale, y * scale, z * scale), 0);
-            //            //nValue *= 30;
-            //            //nValue += 10;
-            //            //nValue = Math.Clamp(nValue, 0, _mapY);
-            //            //
-            //            if (nValue > 0f)
-            //            {
-            //                //_map[y, z, x] = (int)Math.Abs(Math.Abs(x - 128)) + (int)Math.Abs(Math.Abs(z - 128));
-            //                //_map[y, z, x] = y;
-            //                _map[y, z, x] = rand.Next(1, 5);
-            //            }
-            //            int id = _map[y, z, x];
-            //            int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            _map1D[index] = id;
-            //            //for (int yx = 0; yx < nValue; yx++)
-            //            //{
-            //            //    int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            //    _map1D[index] = (int)nValue;
-            //            //   _map[y, z, x] = (int)nValue;
-            //            //}
-            //
-            //            //int index = x + _mapX * z + _mapX * _mapZ * y;
-            //
-            //            //id = (int)nValue;
-            //            //_map1D[index] = id > 0 ? 1 : 0;
-            //        }
-            //    }
-            //}
-
-
-            Color[] atlas = new Color[16 * 16 * 7];
-            for (int i = 0; i < 7; i++)
-            {
-                Color[] copy = new Color[16 * 16];
+                var copy = new Color[16 * 16];
                 _textures[i].GetData(copy);
-                for (int y = 0; y < 16; y++)
+                for (var y = 0; y < 16; y++)
                 {
-                    for (int x = 0; x < 16; x++)
+                    for (var x = 0; x < 16; x++)
                     {
-                        int index3D = x + 16 * y + 16 * 16 * i;
-                        int index2D = x + 16 * y;
+                        var index3D = x + 16 * y + 16 * 16 * i;
+                        var index2D = x + 16 * y;
                         atlas[index3D] = copy[index2D];
                     }
                 }
@@ -306,51 +260,6 @@ namespace VoxelRayCast
 
             var delta = (float)gameTime.ElapsedGameTime.TotalSeconds;
 
-            //Random rand = new Random();
-            //// Create and configure FastNoise object
-            //FastNoiseLite noise = new FastNoiseLite();
-            //noise.SetSeed(101199);
-            //noise.SetNoiseType(FastNoiseLite.NoiseType.Perlin);
-            //
-            //for (int y = 0; y < _mapY; y++)
-            //{
-            //    for (int z = 0; z < _mapZ; z++)
-            //    {
-            //        for (int x = 0; x < _mapX; x++)
-            //        {
-            //
-            //            //int id = _map[y, z, x];
-            //            float nValue = Math.Max(noise.GetNoise(x + (float)gameTime.TotalGameTime.TotalSeconds, y + (float)gameTime.TotalGameTime.TotalSeconds, z + (float)gameTime.TotalGameTime.TotalSeconds), 0);
-            //            //nValue *= 30;
-            //            //nValue += 10;
-            //            //nValue = Math.Clamp(nValue, 0, _mapY);
-            //            //
-            //            int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            if (nValue > 0f)
-            //            {   
-            //                _map1D[index] = 1;
-            //            }
-            //            else
-            //            {
-            //                _map1D[index] = 0;
-            //            }
-            //
-            //            //for (int yx = 0; yx < nValue; yx++)
-            //            //{
-            //            //    int index = x + _mapX * z + _mapX * _mapZ * y;
-            //            //    _map1D[index] = (int)nValue;
-            //            //   _map[y, z, x] = (int)nValue;
-            //            //}
-            //
-            //            //int index = x + _mapX * z + _mapX * _mapZ * y;
-            //
-            //            //id = (int)nValue;
-            //            //_map1D[index] = id > 0 ? 1 : 0;
-            //        }
-            //    }
-            //}
-            //_shaderMap.SetData(_map1D);
-
             _prevState = _currState;
             _currState = Keyboard.GetState();
 
@@ -366,36 +275,7 @@ namespace VoxelRayCast
 
             if (_centerMouse)
             {
-                var mouse = Mouse.GetState();
                 var screenCenter = GraphicsDevice.Viewport.Bounds.Center;
-                var mouseDelta = (mouse.Position - screenCenter).ToVector2();
-
-                if (mouseDelta.Length() != 0)
-                {
-                    mouseDelta /= 10f;
-                    //mouseDelta.Normalize();
-                }
-
-                //_rotation.Y -= mouseDelta.X * delta;
-                //_rotation.X += mouseDelta.Y * delta;
-
-                /*int rotationYKeys = (keyboard.IsKeyDown(Keys.Left) ? -1 : 0) + (keyboard.IsKeyDown(Keys.Right) ? 1 : 0);
-                int rotationXKeys = (keyboard.IsKeyDown(Keys.Down) ? -1 : 0) + (keyboard.IsKeyDown(Keys.Up) ? 1 : 0);
-
-                _rotation.Y -= MathHelper.ToRadians(90f) * delta * rotationYKeys;
-                _rotation.X -= MathHelper.ToRadians(90f) * delta * rotationXKeys;*/
-
-                //if (_rotation.Y < 0)
-                //{
-                //    _rotation.Y += MathHelper.TwoPi;
-                //}
-                //else if (_rotation.Y >= MathHelper.TwoPi)
-                //{
-                //    _rotation.Y -= MathHelper.TwoPi;
-                //}
-                //
-                //_rotation.X = Math.Clamp(_rotation.X, MathHelper.ToRadians(-89f), MathHelper.ToRadians(89f));
-
                 Mouse.SetPosition(screenCenter.X, screenCenter.Y);
 
                 if (_currState.IsKeyDown(Keys.Left))
@@ -420,92 +300,15 @@ namespace VoxelRayCast
             {
                 _centerMouse = !_centerMouse;
             }
-
-            //if (_currMouseState.LeftButton == ButtonState.Pressed && _prevMouseState.LeftButton == ButtonState.Released)
-            //{
-            //    var ray = DDACalculator.RunIteration3D(IsSolid, GetSolid, _rayPosition.X, _rayPosition.Y, _rayPosition.Z, _rayRotation.X, _rayRotation.Y, _rayRotation.Z, 0, 0, 0);
-            //    if (ray.Hit == 1)
-            //    {
-            //
-            //        BreakBlock((int)ray.MapPosition.X, (int)ray.MapPosition.Y, (int)ray.MapPosition.Z);
-            //    }
-            //
-            //
-            //}
-            //_computeShader.Parameters["LightPosition"].SetValue(_position);
-            if (_prevMouseState.ScrollWheelValue < _currMouseState.ScrollWheelValue)
-            {
-                _selection += 1;
-            }
-
-            if (_prevMouseState.ScrollWheelValue > _currMouseState.ScrollWheelValue)
-            {
-                _selection -= 1;
-            }
-
-            _selection = Math.Clamp(_selection, 1, 7);
-
-            //_computeShader.Parameters["LightPosition"].SetValue(_position);
-
-            //if (_currMouseState.RightButton == ButtonState.Pressed && _prevMouseState.RightButton == ButtonState.Released)
-            //{
-            //    var ray = DDACalculator.RunIteration3D(IsSolid, GetSolid, _rayPosition.X, _rayPosition.Y, _rayPosition.Z, _rayRotation.X, _rayRotation.Y, _rayRotation.Z, 0, 0, 0);
-            //    if (ray.Hit == 1)
-            //    {
-            //        int x = 0;
-            //        int y = 0;
-            //        int z = 0;
-            //
-            //        if (ray.Side == (int)Side.X)
-            //        {
-            //            if (ray.SideOrientation == (int)SideOrientation.Positiv)
-            //            {
-            //                x += 1;
-            //            }
-            //            if (ray.SideOrientation == (int)SideOrientation.Negativ)
-            //            {
-            //                x -= 1;
-            //            }
-            //        }
-            //
-            //        if (ray.Side == (int)Side.Z)
-            //        {
-            //            if (ray.SideOrientation == (int)SideOrientation.Positiv)
-            //            {
-            //                z += 1;
-            //            }
-            //            if (ray.SideOrientation == (int)SideOrientation.Negativ)
-            //            {
-            //                z -= 1;
-            //            }
-            //        }
-            //
-            //        if (ray.Side == (int)Side.Y)
-            //        {
-            //            if (ray.SideOrientation == (int)SideOrientation.Positiv)
-            //            {
-            //                y += 1;
-            //            }
-            //            if (ray.SideOrientation == (int)SideOrientation.Negativ)
-            //            {
-            //                y -= 1;
-            //            }
-            //        }
-            //
-            //        PlaceBlock((int)ray.MapPosition.X + x, (int)ray.MapPosition.Y + y, (int)ray.MapPosition.Z + z, _selection);
-            //    }
-            //
-            //    //_computeShader.Parameters["LightPosition"].SetValue(_position);
-            //}
-
+            
             _computeShader.Parameters["RotationMatrix"].SetValue(Matrix.CreateRotationX(_rotation.X) * Matrix.CreateRotationY(_rotation.Y) * Matrix.CreateRotationZ(_rotation.Z));
 
-            var n_rotation =
+            var nRotation =
                 Matrix.CreateRotationX(_rotation.X * 0) *
                 Matrix.CreateRotationY(_rotation.Y) *
                 Matrix.CreateRotationZ(_rotation.Z);
 
-            _direction = Vector3.Transform(Vector3.Backward, n_rotation);
+            _direction = Vector3.Transform(Vector3.Backward, nRotation);
             if (_direction.Length() != 0)
             {
                 _direction.Normalize();
@@ -539,7 +342,7 @@ namespace VoxelRayCast
                 movement += Vector3.Down * _movementSpeed * delta;
             }
 
-
+            
             if (movement.Length() != 0)
             {
                 var next = _position + movement;
@@ -562,10 +365,9 @@ namespace VoxelRayCast
                     {
                         _position = new Vector3(_position.X, _position.Y, next.Z);
                     }
-
                 }
             }
-
+            
             _world = Matrix.Identity;
             _projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(_fov), GraphicsDevice.Viewport.AspectRatio, 0.01f, 100f);
             _view = Matrix.CreateLookAt(_position, _position + _direction, new Vector3(0, 1, 0));
@@ -577,77 +379,33 @@ namespace VoxelRayCast
 
                 _computeShader.Parameters["iTime"].SetValue((float)gameTime.TotalGameTime.TotalSeconds);
                 ComputeRays();
-
-                //var results = new RayResult3D[_rayCastTargetResolutionX * _rayCastTargetResolutionY];
-                //_rayResultBuffer.GetData(results, 0, _rayCastTargetResolutionX * _rayCastTargetResolutionY);
-                //
-                //_results.Clear();
-                //_results.AddRange(results);
-                //
                 _requestRender = true;
             }
 
+            //if (_position != _currentChunk && (_chunkLoaderTask == null || _chunkLoaderTask.IsCompleted))
+            //{
+            //    _chunkLoaderTask = Task.Run(() => LoadChunksAsync(_position, _chunkLoaderCts.Token));
+            //}
+            
             base.Update(gameTime);
         }
 
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.SetRenderTarget(_rayCastTarget);
-            GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
+            GraphicsDevice.Clear(Color.Black);
 
             _spriteBatch.Begin(depthStencilState: DepthStencilState.Default, samplerState: SamplerState.PointWrap);
-            _spriteBatch.Draw(_computeTexture, Vector2.Zero, Microsoft.Xna.Framework.Color.White);
+            _spriteBatch.Draw(_computeTexture, Vector2.Zero, Color.White);
             _spriteBatch.End();
-
-            //GraphicsDevice.SetRenderTarget(_rayCastTarget);
-            //GraphicsDevice.Clear(Color.White);
-            //
-            //for (int y = 0; y < _map.GetLength(0); y++)
-            //{
-            //    for (int z = 0; z < _map.GetLength(1); z++)
-            //    {
-            //        for (int x = 0; x < _map.GetLength(2); x++)
-            //        {
-            //            if (!IsSolid(x, y, z))
-            //            {
-            //                continue;
-            //            }
-            //            DrawCube(x, y + 1, z, 1f);
-            //        }
-            //    }
-            //}
-
-            //foreach (var result in _results)
-            //{
-            //    DrawLine(result.From - new Vector3(0, 0.05f, 0), result.To - new Vector3(0, 0.05f, 0));
-            //}
 
             GraphicsDevice.SetRenderTarget(null);
-            GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.White);
+            GraphicsDevice.Clear(Color.White);
 
             _spriteBatch.Begin(depthStencilState: DepthStencilState.Default, samplerState: SamplerState.PointWrap);
-
-            //_spriteBatch.Draw(_virtualScreen, GraphicsDevice.Viewport.Bounds, Color.White);
-            //_spriteBatch.Draw(_rayCastTarget, new Rectangle(0, 0, 256, 256), Color.White);
-            _spriteBatch.Draw(_rayCastTarget, GraphicsDevice.Viewport.Bounds, Microsoft.Xna.Framework.Color.White);
-            //_spriteBatch.Draw(_textures[_selection - 1], new Rectangle(0, 0, 64, 64), Color.White);
-
-            //_spriteBatch.DrawString(_font, _selection + "", Vector2.Zero, Color.White);
-
+            _spriteBatch.Draw(_rayCastTarget, GraphicsDevice.Viewport.Bounds, Color.White);
             _spriteBatch.End();
-
-
-            if (Keyboard.GetState().IsKeyDown(Keys.Space))
-            {
-                
-                _computeShader.Parameters["LightPosition"].SetValue(_position);
-                
-               //Stream stream = File.Create("image_" + DateTime.Now.ToString("yyyy-dd-M--HH-mm-ss") + ".png");
-               //_rayCastTarget.SaveAsPng(stream, _rayCastTarget.Width, _rayCastTarget.Height);
-               //stream.Dispose();
-               //_rayCastTarget.Dispose();
-               //Exit();
-            }
+            
             base.Draw(gameTime);
         }
 
@@ -657,8 +415,7 @@ namespace VoxelRayCast
             int gridX = (int)map.X;
             int gridY = (int)map.Y;
             int gridZ = (int)map.Z;
-
-
+            
             if (gridY >= _mapY || gridY < 0)
             {
                 return 0;
@@ -673,7 +430,6 @@ namespace VoxelRayCast
             }
             int index = gridX + _mapX * gridZ + _mapX * _mapZ * gridY;
             return _map1D[index];
-            return _map[gridY, gridZ, gridX];
         }
 
         private Vector3 ToGrid(Vector3 position)
@@ -734,21 +490,6 @@ namespace VoxelRayCast
             return IsSolid(position.X, position.Y, position.Z);
         }
 
-        private void DrawLine(Vector3 from, Vector3 to)
-        {
-            _world = Matrix.Identity;
-            _effect.Parameters["WorldViewProjection"].SetValue(_world * _view * _projection);
-            foreach (EffectPass pass in _effect.CurrentTechnique.Passes)
-            {
-                pass.Apply();
-                GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, new VertexPositionColor[]
-                {
-                    new VertexPositionColor(from, Microsoft.Xna.Framework.Color.CornflowerBlue),
-                    new VertexPositionColor(to, Microsoft.Xna.Framework.Color.Black)
-                }, 0, 1);
-            }
-        }
-
         private void BreakBlock(int x, int y, int z)
         {
             int index = x + _mapX * z + _mapX * _mapZ * y;
@@ -788,6 +529,5 @@ namespace VoxelRayCast
                 GraphicsDevice.DispatchCompute(groupCount, 1, 1);
             }
         }
-
     }
 }
