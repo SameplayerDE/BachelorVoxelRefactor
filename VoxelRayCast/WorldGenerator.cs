@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace VoxelRayCast;
@@ -6,7 +7,7 @@ namespace VoxelRayCast;
 public class WorldGenerator
 {
 
-    private static Dictionary<(int, int, int), Chunk> _cache = new();
+    private static ConcurrentDictionary<(int, int, int), Chunk> _cache = new();
     public static FastNoiseLite NoiseGenerator;
     
     public static Chunk GetChunk(int x, int y, int z)
@@ -23,7 +24,7 @@ public class WorldGenerator
             return chunk;
         }
         var generatedChunk = GenerateChunk(x, y, z);
-        _cache.Add((x, y,  z), generatedChunk);
+        _cache.TryAdd((x, y,  z), generatedChunk);
         return generatedChunk;
     }
 

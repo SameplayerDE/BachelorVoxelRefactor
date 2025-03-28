@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Spectre.Console;
+using Color = Microsoft.Xna.Framework.Color;
 
 namespace VoxelRayCast
 {
@@ -25,7 +27,7 @@ namespace VoxelRayCast
         private int _rayCastTargetResolutionX = 1920 / 10;
         private int _rayCastTargetResolutionY = 1080 / 10;
 
-        private const int _distance = 16;
+        private const int _distance = 8;
         private const int _mapX = 16 * (_distance * 2 + 1);
         private const int _mapY = 16 * (_distance * 2 + 1);
         private const int _mapZ = 16 * (_distance * 2 + 1);
@@ -104,6 +106,30 @@ namespace VoxelRayCast
         
         protected override void Initialize()
         {
+            
+            AnsiConsole.Progress().Start(ctx =>
+            {
+                var task1 = ctx.AddTask("[green]Map generation[/]", autoStart: true);
+
+                const int precalculate = 16;
+                int totalChunks = precalculate * precalculate * precalculate;
+                int current = 0;
+
+                for (int y = 0; y < precalculate; y++)
+                {
+                    for (int z = 0; z < precalculate; z++)
+                    {
+                        for (int x = 0; x < precalculate; x++)
+                        {
+                            WorldGenerator.GetChunk(x, y, z); // 👈 Chunk wird gecached / generiert
+                            current++;
+                            task1.Value = (float)current / totalChunks * 100f;
+                        }
+                    }
+                }
+                task1.StopTask(); // optional
+            });
+            
             _map1D = new int[_mapX * _mapY * _mapZ];
             IsFixedTimeStep = false;
             _graphics.SynchronizeWithVerticalRetrace = false;
@@ -281,22 +307,30 @@ namespace VoxelRayCast
 
                 if (_currChunkPosition != _prevChunkPosition)
                 {
-                    for (int dx = -_distance; dx <= _distance; dx++)
-                    for (int dy = -_distance; dy <= _distance; dy++)
-                    for (int dz = -_distance; dz <= _distance; dz++)
+                    var baseChunkPos = ToChunkPosition(_position);
+                    Parallel.For(-_distance, _distance + 1, dx =>
                     {
-                        var chunkPos = ToChunkPosition(_position) + new Vector3(dx, dy, dz);
-                        var chunk = WorldGenerator.GetChunk((int)chunkPos.X, (int)chunkPos.Y, (int)chunkPos.Z);
-                        WriteChunkToMap1D(chunk, dx + _distance, dy + _distance, dz + _distance);
-                    }
+                        for (int dy = -_distance; dy <= _distance; dy++)
+                        {
+                            for (int dz = -_distance; dz <= _distance; dz++)
+                            {
+                                // Berechne die Chunk-Position relativ zur Basisposition
+                                Vector3 offset = new Vector3(dx, dy, dz);
+                                var chunkPos = baseChunkPos + offset;
 
-                    var chunkOrigin = ToChunkPosition(_position) - new Vector3(_distance);
+                                // Hole den Chunk (eventuell mit Caching implementieren)
+                                var chunk = WorldGenerator.GetChunk((int)chunkPos.X, (int)chunkPos.Y, (int)chunkPos.Z);
+
+                                // Verarbeite den Chunk und schreibe ihn in das Map-Array
+                                WriteChunkToMap1D(chunk, dx + _distance, dy + _distance, dz + _distance);
+                            }
+                        }
+                    });
+
+                    var chunkOrigin = _currChunkPosition - new Vector3(_distance);
                     var worldOffset = chunkOrigin * Chunk.Size;
                     _computeShader.Parameters["Offset"].SetValue(worldOffset);
                     _shaderMap.SetData(_map1D);
-                    
-                    Console.WriteLine(worldOffset);
-                    Console.WriteLine(_position);
                 }
             }
             

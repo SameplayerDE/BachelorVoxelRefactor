@@ -1,6 +1,6 @@
 ﻿namespace VoxelRayCast;
 
-public class Chunk
+public struct Chunk
 {
     public static Chunk Empty = new Chunk
     {
@@ -12,6 +12,13 @@ public class Chunk
     public int Y;
     public int Z;
     public int[] Data = new int[Size * Size * Size];
+
+    public Chunk()
+    {
+        X = 0;
+        Y = 0;
+        Z = 0;
+    }
 
     public void Set(int x, int y, int z, int value)
     {
