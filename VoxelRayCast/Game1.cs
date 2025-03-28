@@ -10,46 +10,28 @@ namespace VoxelRayCast
 {
     public class Game1 : Game
     {
-        private Task _chunkLoaderTask;
-        private CancellationTokenSource _chunkLoaderCts = new CancellationTokenSource();
-        private object _mapLock = new object();
-        private const int _viewDistance = 1;
-        private const int _dynamicMapSize = Chunk.Size * (2 * _viewDistance + 1);
-        
         private GraphicsDeviceManager _graphics;
         private SpriteBatch _spriteBatch;
         
         private Texture2D _computeTexture;
         private Texture3D _textureAtlas;
 
-        private List<RayResult3D> _results = new List<RayResult3D>();
-
         private Effect _computeShader;
-        const int ComputeGroupSize = 64;
-        private StructuredBuffer _rayResultBuffer;
+        private const int _computeGroupSize = 64;
+        //private StructuredBuffer _rayResultBuffer;
         private StructuredBuffer _shaderMap;
-        private int _maxCount = 1_000_000_000;
-
-        private RenderTarget2D _virtualScreen;
-        private const int _virtualResolutionX = 240;
-        private const int _virtualResolutionY = 240;
 
         private RenderTarget2D _rayCastTarget;
         private int _rayCastTargetResolutionX = 1920 / 10;
         private int _rayCastTargetResolutionY = 1080 / 10;
 
-        private int _mapX = 256;
-        private int _mapY = 256;
-        private int _mapZ = 256;
+        private const int _distance = 16;
+        private const int _mapX = 16 * (_distance * 2 + 1);
+        private const int _mapY = 16 * (_distance * 2 + 1);
+        private const int _mapZ = 16 * (_distance * 2 + 1);
 
         private int[] _map1D;
-
-        private Matrix _world;
-        private Matrix _view;
-        private Matrix _projection;
-
-        private int _selection = 1;
-
+        
         private Texture2D[] _textures;
         
         private Vector3 _position = new Vector3(-32, 128, -32);
@@ -58,12 +40,8 @@ namespace VoxelRayCast
         private Vector3 _rayRotation;
         private Vector3 _direction;
         private float _movementSpeed = 32.0f;
-
-        private float _xxx = 1.0f;
-        private float _fov = 90;
-        private float _rayCasterFOV = 360;
+        
         private int _rayResolution = 1;
-        private bool _requestRender = false;
 
         private KeyboardState _prevState;
         private KeyboardState _currState;
@@ -73,6 +51,9 @@ namespace VoxelRayCast
         private FastNoiseLite _noise;
 
         private bool _centerMouse = false;
+
+        private Vector3 _currChunkPosition;
+        private Vector3 _prevChunkPosition;
 
         public Game1()
         {
@@ -100,24 +81,6 @@ namespace VoxelRayCast
             _rayCastTargetResolutionY = 1080 / a;
         }
 
-        public void SetMapX(int a = 0)
-        {
-            a = Math.Clamp(a, 1, 4098);
-            _mapX = a;
-        }
-
-        public void SetMapY(int a = 0)
-        {
-            a = Math.Clamp(a, 1, 4098);
-            _mapY = a;
-        }
-
-        public void SetMapZ(int a = 0)
-        {
-            a = Math.Clamp(a, 1, 4098);
-            _mapZ = a;
-        }
-
         private void WriteChunkToMap1D(Chunk chunk, int chunkOffsetX, int chunkOffsetY, int chunkOffsetZ)
         {
             for (int y = 0; y < Chunk.Size; y++)
@@ -126,15 +89,11 @@ namespace VoxelRayCast
                 {
                     for (int x = 0; x < Chunk.Size; x++)
                     {
-                        int worldX = chunkOffsetX + x;
-                        int worldY = chunkOffsetY + y;
-                        int worldZ = chunkOffsetZ + z;
+                        int worldX = chunkOffsetX * Chunk.Size + x;
+                        int worldY = chunkOffsetY * Chunk.Size + y;
+                        int worldZ = chunkOffsetZ * Chunk.Size + z;
 
-                        if (worldX < 0 || worldY < 0 || worldZ < 0 ||
-                            worldX >= _dynamicMapSize || worldY >= _dynamicMapSize || worldZ >= _dynamicMapSize)
-                            continue;
-
-                        int mapIndex = worldX + Chunk.Size * (worldZ + Chunk.Size * worldY);
+                        int mapIndex = worldX + _mapX * (worldZ + _mapZ * worldY);
                         int chunkIndex = x + Chunk.Size * (z + Chunk.Size * y);
 
                         _map1D[mapIndex] = chunk.Data[chunkIndex];
@@ -143,59 +102,12 @@ namespace VoxelRayCast
             }
         }
         
-        private async Task LoadChunksAsync(Vector3 playerPosition, CancellationToken token)
-        {
-            var playerChunk = new Vector3(
-                (int)Math.Floor(_position.X / Chunk.Size),
-                (int)Math.Floor(_position.Y / Chunk.Size),
-                (int)Math.Floor(_position.Z / Chunk.Size)
-            );
-            
-            try
-            {
-                int[] newMapData = new int[_dynamicMapSize * _dynamicMapSize * _dynamicMapSize];
-
-                for (int dx = -_viewDistance; dx <= _viewDistance; dx++)
-                {
-                    for (int dy = -_viewDistance; dy <= _viewDistance; dy++)
-                    {
-                        for (int dz = -_viewDistance; dz <= _viewDistance; dz++)
-                        {
-                            if (token.IsCancellationRequested)
-                            {
-                                return;
-                            }
-                            int chunkX = (int)playerChunk.X + dx;
-                            int chunkY = (int)playerChunk.Y + dy;
-                            int chunkZ = (int)playerChunk.Z + dz;
-
-                            var chunk = WorldGenerator.GetChunk(chunkX, chunkY, chunkZ);
-                            
-                        }
-                    }
-                }
-
-                lock (_mapLock)
-                {
-                    Array.Copy(newMapData, _map1D, newMapData.Length);
-                    _shaderMap.SetData(_map1D);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"ChunkLoad Error: {ex.Message}");
-            }
-        }
-        
         protected override void Initialize()
         {
-            _map1D = new int[Chunk.Size * Chunk.Size * Chunk.Size];
+            _map1D = new int[_mapX * _mapY * _mapZ];
             IsFixedTimeStep = false;
             _graphics.SynchronizeWithVerticalRetrace = false;
             TargetElapsedTime = TimeSpan.FromMilliseconds(16);
-
-            var chunk = WorldGenerator.GetChunk(0, 0, 0);
-            WriteChunkToMap1D(chunk, 0, 0, 0);
             
             _graphics.ApplyChanges();
 
@@ -211,15 +123,13 @@ namespace VoxelRayCast
             _computeTexture = new Texture2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
             _textureAtlas = new Texture3D(GraphicsDevice, 16, 16, 7, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
 
-            _virtualScreen = new RenderTarget2D(GraphicsDevice, _virtualResolutionX, _virtualResolutionY, false, GraphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.Depth24);
             _rayCastTarget = new RenderTarget2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, GraphicsDevice.PresentationParameters.BackBufferFormat, DepthFormat.Depth24);
 
             _spriteBatch = new SpriteBatch(GraphicsDevice);
  
             _computeShader = Content.Load<Effect>("Ray3D");
-            
-            _rayResultBuffer = new StructuredBuffer(GraphicsDevice, typeof(RayResult3D), _maxCount, BufferUsage.None, ShaderAccess.ReadWrite);
-            _shaderMap = new StructuredBuffer(GraphicsDevice, typeof(int), Chunk.Size * Chunk.Size * Chunk.Size, BufferUsage.None, ShaderAccess.ReadWrite);
+            //_rayResultBuffer = new StructuredBuffer(GraphicsDevice, typeof(RayResult3D), _maxCount, BufferUsage.None, ShaderAccess.ReadWrite);
+            _shaderMap = new StructuredBuffer(GraphicsDevice, typeof(int), _mapX * _mapY * _mapZ, BufferUsage.None, ShaderAccess.ReadWrite);
             
             var atlas = new Color[16 * 16 * _textures.Length];
             for (var i = 0; i < _textures.Length; i++)
@@ -341,7 +251,6 @@ namespace VoxelRayCast
             {
                 movement += Vector3.Down * _movementSpeed * delta;
             }
-
             
             if (movement.Length() != 0)
             {
@@ -366,12 +275,31 @@ namespace VoxelRayCast
                         _position = new Vector3(_position.X, _position.Y, next.Z);
                     }
                 }
+
+                _prevChunkPosition = _currChunkPosition;
+                _currChunkPosition = ToChunkPosition(_position);
+
+                if (_currChunkPosition != _prevChunkPosition)
+                {
+                    for (int dx = -_distance; dx <= _distance; dx++)
+                    for (int dy = -_distance; dy <= _distance; dy++)
+                    for (int dz = -_distance; dz <= _distance; dz++)
+                    {
+                        var chunkPos = ToChunkPosition(_position) + new Vector3(dx, dy, dz);
+                        var chunk = WorldGenerator.GetChunk((int)chunkPos.X, (int)chunkPos.Y, (int)chunkPos.Z);
+                        WriteChunkToMap1D(chunk, dx + _distance, dy + _distance, dz + _distance);
+                    }
+
+                    var chunkOrigin = ToChunkPosition(_position) - new Vector3(_distance);
+                    var worldOffset = chunkOrigin * Chunk.Size;
+                    _computeShader.Parameters["Offset"].SetValue(worldOffset);
+                    _shaderMap.SetData(_map1D);
+                    
+                    Console.WriteLine(worldOffset);
+                    Console.WriteLine(_position);
+                }
             }
             
-            _world = Matrix.Identity;
-            _projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(_fov), GraphicsDevice.Viewport.AspectRatio, 0.01f, 100f);
-            _view = Matrix.CreateLookAt(_position, _position + _direction, new Vector3(0, 1, 0));
-
             if (!keyboard.IsKeyDown(Keys.Q))
             {
                 _rayPosition = _position;
@@ -379,9 +307,13 @@ namespace VoxelRayCast
 
                 _computeShader.Parameters["iTime"].SetValue((float)gameTime.TotalGameTime.TotalSeconds);
                 ComputeRays();
-                _requestRender = true;
             }
 
+            if (keyboard.IsKeyDown(Keys.Space))
+            {
+                _computeShader.Parameters["LightPosition"].SetValue(_position);
+            }
+            
             //if (_position != _currentChunk && (_chunkLoaderTask == null || _chunkLoaderTask.IsCompleted))
             //{
             //    _chunkLoaderTask = Task.Run(() => LoadChunksAsync(_position, _chunkLoaderCts.Token));
@@ -409,29 +341,21 @@ namespace VoxelRayCast
             base.Draw(gameTime);
         }
 
-        private int GetSolid(float x, float y, float z)
+        private int ToChunkCoord(float value)
         {
-            var map = ToGrid(x, y, z);
-            int gridX = (int)map.X;
-            int gridY = (int)map.Y;
-            int gridZ = (int)map.Z;
-            
-            if (gridY >= _mapY || gridY < 0)
-            {
-                return 0;
-            }
-            if (gridZ >= _mapZ || gridZ < 0)
-            {
-                return 0;
-            }
-            if (gridX >= _mapX || gridX < 0)
-            {
-                return 0;
-            }
-            int index = gridX + _mapX * gridZ + _mapX * _mapZ * gridY;
-            return _map1D[index];
+            return (int)(value >= 0 ? value / Chunk.Size : (value - Chunk.Size + 1) / Chunk.Size);
         }
 
+        private Vector3 ToChunkPosition(Vector3 position)
+        {
+            var result = new Vector3(
+                ToChunkCoord(position.X),
+                ToChunkCoord(position.Y),
+                ToChunkCoord(position.Z)
+            );
+            return result;
+        }
+        
         private Vector3 ToGrid(Vector3 position)
         {
             var (x, y, z) = position;
@@ -462,13 +386,11 @@ namespace VoxelRayCast
 
         private bool IsSolid(float x, float y, float z)
         {
-
+            return false;
             var map = ToGrid(x, y, z);
             int gridX = (int)map.X;
             int gridY = (int)map.Y;
             int gridZ = (int)map.Z;
-
-
             if (gridY >= _mapY || gridY < 0)
             {
                 return false;
@@ -490,38 +412,21 @@ namespace VoxelRayCast
             return IsSolid(position.X, position.Y, position.Z);
         }
 
-        private void BreakBlock(int x, int y, int z)
-        {
-            int index = x + _mapX * z + _mapX * _mapZ * y;
-            _map1D[index] = 0;
-            _shaderMap.SetData(_map1D);
-        }
-
-        private void PlaceBlock(int x, int y, int z, int id)
-        {
-            int index = x + _mapX * z + _mapX * _mapZ * y;
-            _map1D[index] = id;
-            _shaderMap.SetData(_map1D);
-        }
-
         private void ComputeRays()
         {
-
-            //_computeShader.Parameters["CPUMap"].SetValue(_sahderMap);
+            
             _computeShader.Parameters["Position"].SetValue(_rayPosition);
             _computeShader.Parameters["Rotation"].SetValue(_rayRotation);
-
-            //_computeShader.Parameters["LightDirection"].SetValue(_direction);
-
+            
             _computeShader.Parameters["Output"].SetValue(_computeTexture);
             _computeShader.Parameters["Width"].SetValue(_rayCastTargetResolutionX);
             _computeShader.Parameters["Height"].SetValue(_rayCastTargetResolutionY);
 
-            _computeShader.Parameters["Results"].SetValue(_rayResultBuffer);
+            //_computeShader.Parameters["Results"].SetValue(_rayResultBuffer);
             _computeShader.Parameters["CPUMap"].SetValue(_shaderMap);
 
             double count = (_rayCastTargetResolutionX / _rayResolution) * (_rayCastTargetResolutionY / _rayResolution);
-            int groupCount = (int)Math.Ceiling((double)count / ComputeGroupSize);
+            int groupCount = (int)Math.Ceiling(count / _computeGroupSize);
 
             foreach (var pass in _computeShader.CurrentTechnique.Passes)
             {

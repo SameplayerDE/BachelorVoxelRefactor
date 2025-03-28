@@ -11,12 +11,17 @@ public class WorldGenerator
     
     public static Chunk GetChunk(int x, int y, int z)
     {
+        if (x < 0 || y < 0 || z < 0)
+        {
+            return Chunk.Empty;
+        }
+        
         var key = (x, y, z);
+        
         if (_cache.TryGetValue(key, out var chunk))
         {
             return chunk;
         }
-
         var generatedChunk = GenerateChunk(x, y, z);
         _cache.Add((x, y,  z), generatedChunk);
         return generatedChunk;
@@ -37,7 +42,7 @@ public class WorldGenerator
             {
                 for (int curX = 0; curX < Chunk.Size; curX++)
                 {
-                    var nValue = Math.Max(NoiseGenerator.GetNoise(curX * scale, curY * scale, curZ * scale), 0);
+                    var nValue = Math.Max(NoiseGenerator.GetNoise(x * Chunk.Size + curX, z * Chunk.Size + curZ, y * Chunk.Size + curY), 0);
                     chunk.Set(curX, curY, curZ, nValue > 0.0f ? 1 : 0);
                 }
             }

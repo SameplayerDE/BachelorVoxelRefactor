@@ -2,6 +2,11 @@
 
 public class Chunk
 {
+    public static Chunk Empty = new Chunk
+    {
+        Data = new int[Size * Size * Size] // automatisch alles 0
+    };
+    
     public const int Size = 16;
     public int X;
     public int Y;

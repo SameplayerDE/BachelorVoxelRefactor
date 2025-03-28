@@ -14,12 +14,6 @@ if (pick == "Start")
     int input;
     input = AnsiConsole.Ask<int>("insert a seed (zero triggers default seed): ");
     game.SetSeed(input == 0 ? 101199 : input);
-    input = AnsiConsole.Ask<int>("insert a number of voxel per X (1-4098): ");
-    game.SetMapX(input);
-    input = AnsiConsole.Ask<int>("insert a number of voxel per Y (1-4098): ");
-    game.SetMapY(input);
-    input = AnsiConsole.Ask<int>("insert a number of voxel per Z (1-4098): ");
-    game.SetMapZ(input);
     input = AnsiConsole.Ask<int>("insert a number for the resolution downscaling factor (1-100): ");
     game.SetResolutionDownScaleBy(input);
     game.Run();

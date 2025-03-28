@@ -26,7 +26,7 @@ float3 LightPosition = float3(12, 2, 12);
 float3 LightDirection = float3(0, -1, 0);
 float LightFalloff = 1;
 
-RWStructuredBuffer<RayResult3D> Results;
+//RWStructuredBuffer<RayResult3D> Results;
 RWStructuredBuffer<int> CPUMap;
 
 int MapMaxX;
@@ -40,6 +40,7 @@ int InputW;
 int InputH;
 
 float3 Position;
+float3 Offset;
 float3 Rotation;
 matrix RotationMatrix;
 float iTime;
@@ -55,9 +56,9 @@ float2 rotate2d(float2 v, float a) {
 
 int getSolid(int x, int y, int z) {
 
-    int gridX = (int)x;
-    int gridY = (int)y;
-    int gridZ = (int)z;
+    int gridX = (int)x - Offset.x;
+    int gridY = (int)y - Offset.y;
+    int gridZ = (int)z - Offset.z;
 
     if (gridY >= MapMaxY || gridY < 0)
     {
@@ -211,7 +212,7 @@ float3x3 rotZ(float t) {
 [numthreads(GroupSize, 1, 1)]
 void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  localIndex : SV_GroupIndex, uint3 globalID : SV_DispatchThreadID)
 {
-    RayResult3D result = Results[globalID.x];
+    RayResult3D result;// = Results[globalID.x];
 
     int x = globalID.x % Width;
     int y = globalID.x / Width;
@@ -325,7 +326,6 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
         distance++;
     }
 
-
     if (side == 0)
     {
         rayLength = sideDistX - deltaDistX;
@@ -351,7 +351,7 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
     result.From = float3(posX, posY, posZ);
     result.To = result.From + result.Direction * result.Length;
 
-    Results[globalID.x] = result;
+    //Results[globalID.x] = result;
 
     float4 c = float4(0, 0, 0, 0);
     int tX = 0;
@@ -414,18 +414,20 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
         totalLight += AmbientLightColor;
         //
         float3 lightDir = normalize(LightPosition - result.To);
+        
         float diffuse = saturate(dot(lightDir, normal));
         //
-       	if (isBlocked(result.To, LightPosition) == 1) {
-            diffuse = 0;
-        }
+       	//if (isBlocked(result.To, LightPosition) == 1) {
+        //    diffuse = 0;
+        //}
         //
         totalLight += diffuse * LightColor;
         //
         float3 output = saturate(totalLight) * c;
-        float fog = clamp((result.Length - FogStart) / (FogEnd - FogStart), 0, 1);
-        float3 finalColor = lerp(output, float3(0, 0, 0), fog);
-        Output[idL] = float4(finalColor, 1);
+        //float fog = clamp((result.Length - FogStart) / (FogEnd - FogStart), 0, 1);
+        //float3 finalColor = lerp(output, float3(0, 0, 0), fog);
+        //Output[idL] = float4(finalColor, 1);
+        Output[idL] = float4(output, 1);
     }
     else
     {
