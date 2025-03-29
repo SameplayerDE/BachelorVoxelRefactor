@@ -56,6 +56,8 @@ namespace VoxelRayCast
 
         private Vector3 _currChunkPosition;
         private Vector3 _prevChunkPosition;
+        
+        private VertexBuffer _vertexBuffer;
 
         public Game1()
         {
@@ -70,6 +72,70 @@ namespace VoxelRayCast
             WorldGenerator.NoiseGenerator = _noise;
         }
 
+        public void BuildCube()
+        {
+             VertexPositionColor[] vertices = new VertexPositionColor[6 * 6];
+
+            float val = 1f;
+
+            //Facing Negativ X
+            vertices[6 * 0 + 0] = new VertexPositionColor(new Vector3(+0, +0, +val), Color.White);
+            vertices[6 * 0 + 1] = new VertexPositionColor(new Vector3(+0, -val, +val), Color.White);
+            vertices[6 * 0 + 2] = new VertexPositionColor(new Vector3(+0, -val, +0), Color.White);
+
+            vertices[6 * 0 + 3] = new VertexPositionColor(new Vector3(+0, -val, +0), Color.White);
+            vertices[6 * 0 + 4] = new VertexPositionColor(new Vector3(+0, +0, +0), Color.White);
+            vertices[6 * 0 + 5] = new VertexPositionColor(new Vector3(+0, +0, +val), Color.White);
+
+            //Facing Negativ Y
+            vertices[6 * 1 + 0] = new VertexPositionColor(new Vector3(+0, -val, +val), Color.Red);
+            vertices[6 * 1 + 1] = new VertexPositionColor(new Vector3(+val, -val, +val), Color.Red);
+            vertices[6 * 1 + 2] = new VertexPositionColor(new Vector3(+val, -val, +0), Color.Red);
+
+            vertices[6 * 1 + 3] = new VertexPositionColor(new Vector3(+val, -val, +0), Color.Red);
+            vertices[6 * 1 + 4] = new VertexPositionColor(new Vector3(+0, -val, +0), Color.Red);
+            vertices[6 * 1 + 5] = new VertexPositionColor(new Vector3(+0, -val, +val), Color.Red);
+
+            //Facing Positiv X
+            vertices[6 * 2 + 0] = new VertexPositionColor(new Vector3(+val, -val, +val), Color.Blue);
+            vertices[6 * 2 + 1] = new VertexPositionColor(new Vector3(+val, +0, +val), Color.Blue);
+            vertices[6 * 2 + 2] = new VertexPositionColor(new Vector3(+val, +0, +0), Color.Blue);
+
+            vertices[6 * 2 + 3] = new VertexPositionColor(new Vector3(+val, +0, +0), Color.Blue);
+            vertices[6 * 2 + 4] = new VertexPositionColor(new Vector3(+val, -val, +0), Color.Blue);
+            vertices[6 * 2 + 5] = new VertexPositionColor(new Vector3(+val, -val, +val), Color.Blue);
+
+            //Facing Positiv Y
+            vertices[6 * 3 + 0] = new VertexPositionColor(new Vector3(+val, +0, +val), Color.Yellow);
+            vertices[6 * 3 + 1] = new VertexPositionColor(new Vector3(+0, +0, +val), Color.Yellow);
+            vertices[6 * 3 + 2] = new VertexPositionColor(new Vector3(+0, +0, +0), Color.Yellow);
+
+            vertices[6 * 3 + 3] = new VertexPositionColor(new Vector3(+0, +0, +0), Color.Yellow);
+            vertices[6 * 3 + 4] = new VertexPositionColor(new Vector3(+val, +0, +0), Color.Yellow);
+            vertices[6 * 3 + 5] = new VertexPositionColor(new Vector3(+val, +0, +val), Color.Yellow);
+
+            //Facing Positiv Z
+            vertices[6 * 4 + 0] = new VertexPositionColor(new Vector3(+val, +0, +val), Color.Green);
+            vertices[6 * 4 + 1] = new VertexPositionColor(new Vector3(+val, -val, +val), Color.Green);
+            vertices[6 * 4 + 2] = new VertexPositionColor(new Vector3(+0, -val, +val), Color.Green);
+
+            vertices[6 * 4 + 3] = new VertexPositionColor(new Vector3(+0, -val, +val), Color.Green);
+            vertices[6 * 4 + 4] = new VertexPositionColor(new Vector3(+0, +0, +val), Color.Green);
+            vertices[6 * 4 + 5] = new VertexPositionColor(new Vector3(+val, +0, +val), Color.Green);
+
+            //Facing Negativ Z
+            vertices[6 * 5 + 0] = new VertexPositionColor(new Vector3(+0, +0, +0), Color.Purple);
+            vertices[6 * 5 + 1] = new VertexPositionColor(new Vector3(+0, -val, +0), Color.Purple);
+            vertices[6 * 5 + 2] = new VertexPositionColor(new Vector3(+val, -val, +0), Color.Purple);
+
+            vertices[6 * 5 + 3] = new VertexPositionColor(new Vector3(+val,  -val, +0), Color.Purple);
+            vertices[6 * 5 + 4] = new VertexPositionColor(new Vector3(+val, +0, +0), Color.Purple);
+            vertices[6 * 5 + 5] = new VertexPositionColor(new Vector3(+0, +0, +0), Color.Purple);
+
+            _vertexBuffer = new VertexBuffer(GraphicsDevice, typeof(VertexPositionColor), 6 * 6, BufferUsage.WriteOnly);
+            _vertexBuffer.SetData(vertices);
+        }
+        
         public void SetSeed(int seed = 101199)
         {
             _noise.SetSeed(seed);
@@ -321,6 +387,8 @@ namespace VoxelRayCast
                                 // Hole den Chunk (eventuell mit Caching implementieren)
                                 var chunk = WorldGenerator.GetChunk((int)chunkPos.X, (int)chunkPos.Y, (int)chunkPos.Z);
 
+                                //var octree = WorldGenerator.BuildOctree(chunk);
+                                
                                 // Verarbeite den Chunk und schreibe ihn in das Map-Array
                                 WriteChunkToMap1D(chunk, dx + _distance, dy + _distance, dz + _distance);
                             }
