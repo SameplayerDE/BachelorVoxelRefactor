@@ -18,6 +18,11 @@ namespace VoxelRayCast
         private Texture2D _computeTexture;
         private Texture3D _textureAtlas;
 
+        private Effect _effect;
+        private Matrix _world;
+        private Matrix _view;
+        private Matrix _projection;
+        
         private Effect _computeShader;
         private const int _computeGroupSize = 64;
         //private StructuredBuffer _rayResultBuffer;
@@ -27,7 +32,7 @@ namespace VoxelRayCast
         private int _rayCastTargetResolutionX = 1920 / 10;
         private int _rayCastTargetResolutionY = 1080 / 10;
 
-        private const int _distance = 8;
+        private const int _distance = 2;
         private const int _mapX = 16 * (_distance * 2 + 1);
         private const int _mapY = 16 * (_distance * 2 + 1);
         private const int _mapZ = 16 * (_distance * 2 + 1);
@@ -35,6 +40,7 @@ namespace VoxelRayCast
         private int[] _map1D;
         
         private Texture2D[] _textures;
+        private List<OctreeNode> nodes = new();
         
         private Vector3 _position = new Vector3(-32, 128, -32);
         private Vector3 _rayPosition = new Vector3(0, 0f, 0);
@@ -170,6 +176,36 @@ namespace VoxelRayCast
             }
         }
         
+        private void DrawLine(Vector3 from, Vector3 to)
+        {
+            _world = Matrix.Identity;
+            _effect.Parameters["WorldViewProjection"].SetValue(_world * _view * _projection);
+            foreach (EffectPass pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, new VertexPositionColor[]
+                {
+                    new VertexPositionColor(from, Microsoft.Xna.Framework.Color.CornflowerBlue),
+                    new VertexPositionColor(to, Microsoft.Xna.Framework.Color.Black)
+                }, 0, 1);
+            }
+        }
+
+        private void DrawLine(Vector3 from, Vector3 to, Color color)
+        {
+            _world = Matrix.Identity;
+            _effect.Parameters["WorldViewProjection"].SetValue(_world * _view * _projection);
+            foreach (EffectPass pass in _effect.CurrentTechnique.Passes)
+            {
+                pass.Apply();
+                GraphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, new VertexPositionColor[]
+                {
+                    new VertexPositionColor(from, color),
+                    new VertexPositionColor(to, color)
+                }, 0, 1);
+            }
+        }
+        
         protected override void Initialize()
         {
             
@@ -211,6 +247,8 @@ namespace VoxelRayCast
             _textures[4] = Content.Load<Texture2D>("gold_block");
             _textures[5] = Content.Load<Texture2D>("oak_log_top");
             _textures[6] = Content.Load<Texture2D>("cobblestone");
+            
+            _effect = Content.Load<Effect>("vpc");
 
             _computeTexture = new Texture2D(GraphicsDevice, _rayCastTargetResolutionX, _rayCastTargetResolutionY, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
             _textureAtlas = new Texture3D(GraphicsDevice, 16, 16, 7, false, SurfaceFormat.Color, ShaderAccess.ReadWrite);
@@ -373,6 +411,7 @@ namespace VoxelRayCast
 
                 if (_currChunkPosition != _prevChunkPosition)
                 {
+                    nodes.Clear();
                     var baseChunkPos = ToChunkPosition(_position);
                     Parallel.For(-_distance, _distance + 1, dx =>
                     {
@@ -387,7 +426,7 @@ namespace VoxelRayCast
                                 // Hole den Chunk (eventuell mit Caching implementieren)
                                 var chunk = WorldGenerator.GetChunk((int)chunkPos.X, (int)chunkPos.Y, (int)chunkPos.Z);
 
-                                //var octree = WorldGenerator.BuildOctree(chunk);
+                                nodes.Add(WorldGenerator.BuildOctree(chunk));
                                 
                                 // Verarbeite den Chunk und schreibe ihn in das Map-Array
                                 WriteChunkToMap1D(chunk, dx + _distance, dy + _distance, dz + _distance);
@@ -416,6 +455,11 @@ namespace VoxelRayCast
                 _computeShader.Parameters["LightPosition"].SetValue(_position);
             }
             
+            
+            _world = Matrix.Identity;
+            _projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(70), GraphicsDevice.Viewport.AspectRatio, 0.01f, 100f);
+            _view = Matrix.CreateLookAt(_position, _position + _direction, new Vector3(0, 1, 0));
+            
             //if (_position != _currentChunk && (_chunkLoaderTask == null || _chunkLoaderTask.IsCompleted))
             //{
             //    _chunkLoaderTask = Task.Run(() => LoadChunksAsync(_position, _chunkLoaderCts.Token));
@@ -424,6 +468,87 @@ namespace VoxelRayCast
             base.Update(gameTime);
         }
 
+        private void DrawNode(OctreeNode root, Vector3 offset)
+        {
+            // Iterative Traversierung mit einem Stack
+            Stack<OctreeNode> stack = new Stack<OctreeNode>();
+            stack.Push(root);
+
+            while (stack.Count > 0)
+            {
+                OctreeNode current = stack.Pop();
+                // Verschiebe die Knotenkoordinaten in den Welt-Raum
+                DrawBoundingBox(current.Min + offset, current.Max + offset, root.Value == 1 ? Color.Red : Color.Blue);
+                
+                if (current.Children != null)
+                {
+                    foreach (OctreeNode child in current.Children)
+                    {
+                        if (child != null)
+                            stack.Push(child);
+                    }
+                }
+            }
+        }
+
+        private void DrawBoundingBox(Vector3 min, Vector3 max, Color color)
+        {
+            // Berechne die 8 Ecken des AABB
+            Vector3[] corners = new Vector3[8];
+            corners[0] = new Vector3(min.X, min.Y, min.Z);
+            corners[1] = new Vector3(max.X, min.Y, min.Z);
+            corners[2] = new Vector3(max.X, max.Y, min.Z);
+            corners[3] = new Vector3(min.X, max.Y, min.Z);
+            corners[4] = new Vector3(min.X, min.Y, max.Z);
+            corners[5] = new Vector3(max.X, min.Y, max.Z);
+            corners[6] = new Vector3(max.X, max.Y, max.Z);
+            corners[7] = new Vector3(min.X, max.Y, max.Z);
+
+            // Untere Fläche
+            DrawLine(corners[0], corners[1], color);
+            DrawLine(corners[1], corners[2], color);
+            DrawLine(corners[2], corners[3], color);
+            DrawLine(corners[3], corners[0], color);
+
+            // Obere Fläche
+            DrawLine(corners[4], corners[5], color);
+            DrawLine(corners[5], corners[6], color);
+            DrawLine(corners[6], corners[7], color);
+            DrawLine(corners[7], corners[4], color);
+
+            // Vertikale Kanten
+            DrawLine(corners[0], corners[4], color);
+            DrawLine(corners[1], corners[5], color);
+            DrawLine(corners[2], corners[6], color);
+            DrawLine(corners[3], corners[7], color);
+        }
+
+        private void DrawAllChunkOctrees()
+        {
+            int regionSize = 2; // Beispiel: 16 Chunks in jeder Dimension
+            for (int cy = 0; cy < regionSize; cy++)
+            {
+                for (int cz = 0; cz < regionSize; cz++)
+                {
+                    for (int cx = 0; cx < regionSize; cx++)
+                    {
+                        // Hole den Chunk; dabei wird dieser ggf. generiert und gecached.
+                        Chunk chunk = WorldGenerator.GetChunk(cx, cy, cz);
+                
+                        // Berechne den Octree des Chunks (auf CPU-Seite) – idealerweise speicherst du
+                        // das Ergebnis im Chunk, damit es nicht bei jedem Frame neu berechnet wird.
+                        OctreeNode octree = WorldGenerator.BuildOctree(chunk);
+                
+                        // Der Chunk liegt in Weltkoordinaten: (cx * Chunk.Size, cy * Chunk.Size, cz * Chunk.Size)
+                        Vector3 chunkOffset = new Vector3(cx * Chunk.Size, cy * Chunk.Size, cz * Chunk.Size);
+                
+                        // Render den Octree (Wireframe) mit dem Offset
+                        DrawNode(octree, chunkOffset);
+                    }
+                }
+            }
+        }
+        
         protected override void Draw(GameTime gameTime)
         {
             GraphicsDevice.SetRenderTarget(_rayCastTarget);
@@ -436,7 +561,7 @@ namespace VoxelRayCast
             GraphicsDevice.SetRenderTarget(null);
             GraphicsDevice.Clear(Color.White);
 
-            _spriteBatch.Begin(depthStencilState: DepthStencilState.Default, samplerState: SamplerState.PointWrap);
+            _spriteBatch.Begin(depthStencilState: DepthStencilState.None, samplerState: SamplerState.PointWrap);
             _spriteBatch.Draw(_rayCastTarget, GraphicsDevice.Viewport.Bounds, Color.White);
             _spriteBatch.End();
             

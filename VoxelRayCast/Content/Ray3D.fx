@@ -15,44 +15,25 @@ struct RayResult3D
     float3 Angle;
 };
 
-float3 FogColor = float3(0, 0, 0);
-float FogStart = 256;
-float FogEnd = 512;
+RWStructuredBuffer<int> CPUMap; // map data
+RWTexture2D<float4> Output; // render target
 
-float3 AmbientLightColor = float3(0.4, 0.4, 0.4);
-float3 LightColor = float3(1, 0.9f, 1);
-float ConeAngle = 2;
-float3 LightPosition = float3(12, 2, 12);
-float3 LightDirection = float3(0, -1, 0);
-float LightFalloff = 1;
-
-//RWStructuredBuffer<RayResult3D> Results;
-RWStructuredBuffer<int> CPUMap;
+Texture3D<float4> Input; // texture atlas
+int InputW; // texture width
+int InputH; // texture height
 
 int MapMaxX;
 int MapMaxY;
 int MapMaxZ;
 
-RWTexture2D<float4> Output;
-
-Texture3D<float4> Input;
-int InputW;
-int InputH;
-
-float3 Position;
+float3 Position; // camera position
 float3 Offset;
-float3 Rotation;
+float3 Rotation; // camera rotation
 matrix RotationMatrix;
-float iTime;
+float iTime; // IDK
 
 int Width;
 int Height;
-
-float2 rotate2d(float2 v, float a) {
-    float sinA = sin(a);
-    float cosA = cos(a);
-    return float2(v.x * cosA - v.y * sinA, v.y * cosA + v.x * sinA);
-}
 
 int getSolid(int x, int y, int z) {
 
@@ -77,142 +58,25 @@ int getSolid(int x, int y, int z) {
     return solid;
 };
 
-int isBlocked(float3 a, float3 b) {
+/*bool RayIntersectsAABB(float3 origin, float3 dir, float3 min, float3 max, out float tmin, out float tmax) {
+    float3 invDir = 1.0 / dir;
 
-    float3 dir = b - a;
-    float len = length(dir);
-    dir = normalize(dir);
+    float3 t0 = (min - origin) * invDir;
+    float3 t1 = (max - origin) * invDir;
 
-    float posX = a.x;
-    float posY = a.y;
-    float posZ = a.z;
+    float3 tmin3 = min(t0, t1);
+    float3 tmax3 = max(t0, t1);
 
-    int mapX = (int)posX;
-    int mapY = (int)posY;
-    int mapZ = (int)posZ;
+    tmin = max(max(tmin3.x, tmin3.y), tmin3.z);
+    tmax = min(min(tmax3.x, tmax3.y), tmax3.z);
 
-    if (posX < 0)
-    {
-        mapX -= 1;
-    }
-    if (posY < 0)
-    {
-        mapY -= 1;
-    }
-    if (posZ < 0)
-    {
-        mapZ -= 1;
-    }
-
-    float3 mapPosition = float3(mapX, mapY, mapZ);
-
-    float3 rayPosition = a;
-    float3 rayDir = dir;
-    float rayDirLength = length(rayDir);
-
-    float3 deltaDist = float3(rayDirLength, rayDirLength, rayDirLength) / rayDir;
-    deltaDist = float3(abs(deltaDist.x), abs(deltaDist.y), abs(deltaDist.z));
-
-    float deltaDistX = deltaDist.x;
-    float deltaDistZ = deltaDist.z;
-    float deltaDistY = deltaDist.y;
-
-    float3 raySign = float3(sign(rayDir.x), sign(rayDir.y), sign(rayDir.z));
-
-    float3 sideDist = (raySign * (mapPosition - rayPosition) + (raySign * 0.5f) + float3(0.5f, 0.5f, 0.5f)) * deltaDist;
-    float3 step = raySign;
-
-    float sideDistX = sideDist.x;
-    float sideDistY = sideDist.y;
-    float sideDistZ = sideDist.z;
-
-    int stepX = (int)step.x;
-    int stepY = (int)step.y;
-    int stepZ = (int)step.z;
-
-
-    int side = 0;
-    float rayLength = 0.0f;
-    int hit = 0;
-    float maxDist = len;
-    int dist;
-
-    while (len - rayLength > 1.0f)
-    {
-        if (sideDistX < sideDistZ)
-        {
-            if (sideDistX < sideDistY)
-            {
-                sideDistX += deltaDistX;
-                mapX += stepX;
-                side = 0;
-            }
-            else
-            {
-                sideDistY += deltaDistY;
-                mapY += stepY;
-                side = 1;
-            }
-        }
-        else
-        {
-            if (sideDistZ < sideDistY)
-            {
-                sideDistZ += deltaDistZ;
-                mapZ += stepZ;
-                side = 2;
-            }
-            else
-            {
-                sideDistY += deltaDistY;
-                mapY += stepY;
-                side = 1;
-            }
-        }
-
-        if (side == 0)
-        {
-            rayLength = sideDistX - deltaDistX;
-        }
-        else if (side == 1)
-        {
-            rayLength = sideDistY - deltaDistY;
-        }
-        else if (side == 2)
-        {
-            rayLength = sideDistZ - deltaDistZ;
-        }
-
-        if (getSolid(mapX, mapY, mapZ) != 0)
-        {
-            hit = 1;
-        }
-        dist++;
-    }
-
-    return hit;
-};
-
-
-float3x3 rotX(float t) {
-    float3x3 m = float3x3(1, 0, 0, 0, cos(t), -sin(t), 0, sin(t), cos(t));
-    return m;
-}
-
-float3x3 rotY(float t) {
-    float3x3 m = float3x3(cos(t), 0, sin(t), 0, 1, 0, -sin(t), 0, cos(t));
-    return m;
-}
-
-float3x3 rotZ(float t) {
-    float3x3 m = float3x3(1, 0, 0, 0, cos(t), -sin(t), 0, sin(t), cos(t));
-    return m;
-}
+    return tmax >= max(tmin, 0.0);
+}*/
 
 [numthreads(GroupSize, 1, 1)]
 void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  localIndex : SV_GroupIndex, uint3 globalID : SV_DispatchThreadID)
 {
-    RayResult3D result;// = Results[globalID.x];
+    RayResult3D result;
 
     int x = globalID.x % Width;
     int y = globalID.x / Width;
@@ -271,7 +135,6 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
     int stepY = (int)step.y;
     int stepZ = (int)step.z;
 
-
     int distance = 0;
     int maxDistance = 512;
     int minDistance = 32;
@@ -318,11 +181,13 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
             }
         }
 
-        if (getSolid(mapX, mapY, mapZ) != 0)
-        {
-            hit = 1;
-            id = getSolid(mapX, mapY, mapZ);
-        }
+		int voxelValue = getSolid(mapX, mapY, mapZ);
+		if (voxelValue != 0)
+		{
+			hit = 1;
+			id = voxelValue;
+			break;
+		}
         distance++;
     }
 
@@ -409,31 +274,12 @@ void CS(uint3 localID : SV_GroupThreadID, uint3 groupID : SV_GroupID, uint  loca
        	    }
        	}
 
-
-        float3 totalLight = float3(0, 0, 0);
-        totalLight += AmbientLightColor;
-        //
-        float3 lightDir = normalize(LightPosition - result.To);
-        
-        float diffuse = saturate(dot(lightDir, normal));
-        //
-       	//if (isBlocked(result.To, LightPosition) == 1) {
-        //    diffuse = 0;
-        //}
-        //
-        totalLight += diffuse * LightColor;
-        //
-        float3 output = saturate(totalLight) * c;
-        //float fog = clamp((result.Length - FogStart) / (FogEnd - FogStart), 0, 1);
-        //float3 finalColor = lerp(output, float3(0, 0, 0), fog);
-        //Output[idL] = float4(finalColor, 1);
-        Output[idL] = float4(output, 1);
+        Output[idL] = c;
     }
     else
     {
         Output[idL] = float4(0, 0, 0, 1);
     }
-
 }
 
 

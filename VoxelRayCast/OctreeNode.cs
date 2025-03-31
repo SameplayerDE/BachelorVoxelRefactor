@@ -2,7 +2,7 @@
 
 namespace VoxelRayCast;
 
-public struct OctreeNode {
+public class OctreeNode {
     public Vector3 Min;      // Minimum des AABB
     public Vector3 Max;      // Maximum des AABB
     // public int ChildStart;   // Index im Buffer, ab dem die 8 Kindknoten liegen (-1, wenn Blatt)
